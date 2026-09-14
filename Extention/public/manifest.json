@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "VaultX",
+  "version": "1.0.0",
+  "description": "VaultX secure password manager and college portal assistant.",
+
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "identity",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:5173/*",
+    "https://mail.google.com/*",
+    "https://gmail.googleapis.com/*"
+  ],
+
+  "action": {
+    "default_title": "VaultX",
+    "default_popup": "index.html"
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
