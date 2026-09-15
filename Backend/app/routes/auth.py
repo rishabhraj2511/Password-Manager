@@ -12,6 +12,7 @@ import urllib.error
 import pyotp
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -22,6 +23,7 @@ from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
     Login2FAVerifyRequest,
+    SessionRefreshRequest,
     ChangePasswordRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest
@@ -31,6 +33,8 @@ from app.security import (
     hash_password,
     verify_password,
     create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
     create_reset_token,
     hash_reset_token,
     reset_token_expiry
@@ -40,12 +44,6 @@ from app.dependencies import get_current_user
 
 from app.services.email_service import (
     send_password_reset_email
-)
-
-
-router = APIRouter(
-    prefix="/auth",
-    tags=["Authentication"]
 )
 
 
@@ -60,6 +58,205 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"]
+)
+
+
+# =========================================================
+# PASSWORD VIEW PIN SCHEMAS
+# =========================================================
+
+class PasswordViewPinSetRequest(BaseModel):
+    pin: str = Field(min_length=6, max_length=6)
+
+
+class PasswordViewPinVerifyRequest(BaseModel):
+    pin: str = Field(min_length=6, max_length=6)
+
+
+class PasswordViewPinChangeRequest(BaseModel):
+    current_pin: str = Field(min_length=6, max_length=6)
+    new_pin: str = Field(min_length=6, max_length=6)
+
+
+def validate_password_view_pin(pin: str) -> None:
+    if not re.fullmatch(r"\d{6}", pin):
+        raise HTTPException(
+            status_code=400,
+            detail="PIN must be exactly 6 digits."
+        )
+
+
+def get_authenticated_user(
+    db: Session,
+    current_user: User
+) -> User:
+    """
+    Fetch the authenticated user using the endpoint's
+    active database session.
+    """
+    user = db.query(User).filter(
+        User.id == current_user.id
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found."
+        )
+
+    return user
+
+
+# =========================================================
+# PASSWORD VIEW PIN STATUS
+# =========================================================
+
+@router.get("/password-view-pin/status")
+def password_view_pin_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user = get_authenticated_user(
+        db,
+        current_user
+    )
+
+    return {
+        "pin_set": bool(
+            user.password_view_pin_hash
+        )
+    }
+
+
+# =========================================================
+# SET PASSWORD VIEW PIN
+# =========================================================
+
+@router.post("/password-view-pin/set")
+def set_password_view_pin(
+    data: PasswordViewPinSetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    validate_password_view_pin(data.pin)
+
+    user = get_authenticated_user(
+        db,
+        current_user
+    )
+
+    if user.password_view_pin_hash:
+        raise HTTPException(
+            status_code=400,
+            detail="Password view PIN is already set. Use change PIN instead."
+        )
+
+    user.password_view_pin_hash = hash_password(
+        data.pin
+    )
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Password view PIN set successfully.",
+        "pin_set": True
+    }
+
+
+# =========================================================
+# VERIFY PASSWORD VIEW PIN
+# =========================================================
+
+@router.post("/password-view-pin/verify")
+def verify_password_view_pin(
+    data: PasswordViewPinVerifyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    validate_password_view_pin(data.pin)
+
+    user = get_authenticated_user(
+        db,
+        current_user
+    )
+
+    if not user.password_view_pin_hash:
+        raise HTTPException(
+            status_code=400,
+            detail="Password view PIN is not set."
+        )
+
+    if not verify_password(
+        data.pin,
+        user.password_view_pin_hash
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect password view PIN."
+        )
+
+    return {
+        "verified": True,
+        "message": "PIN verified successfully."
+    }
+
+
+# =========================================================
+# CHANGE PASSWORD VIEW PIN
+# =========================================================
+
+@router.put("/password-view-pin/change")
+def change_password_view_pin(
+    data: PasswordViewPinChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    validate_password_view_pin(data.current_pin)
+    validate_password_view_pin(data.new_pin)
+
+    user = get_authenticated_user(
+        db,
+        current_user
+    )
+
+    if data.current_pin == data.new_pin:
+        raise HTTPException(
+            status_code=400,
+            detail="New PIN must be different from current PIN."
+        )
+
+    if not user.password_view_pin_hash:
+        raise HTTPException(
+            status_code=400,
+            detail="Password view PIN is not set."
+        )
+
+    if not verify_password(
+        data.current_pin,
+        user.password_view_pin_hash
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect current password view PIN."
+        )
+
+    user.password_view_pin_hash = hash_password(
+        data.new_pin
+    )
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Password view PIN changed successfully."
+    }
+
 
 
 # =========================================================
@@ -1347,17 +1544,20 @@ def login(
         return {
             "access_token": None,
             "token_type": "bearer",
-            "requires_2fa": True
+            "refresh_token": None,
+            "requires_2fa": True,
+            "requires_session_2fa": False
         }
 
-    access_token = create_access_token(
-        user.id
-    )
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
 
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "requires_2fa": False
+        "refresh_token": refresh_token,
+        "requires_2fa": False,
+        "requires_session_2fa": False
     }
 
 
@@ -1380,7 +1580,16 @@ def verify_login_2fa(
     if not user:
         raise HTTPException(
             status_code=401,
-            detail="Invalid login request"
+            detail="Invalid email or password"
+        )
+
+    if not verify_password(
+        data.password,
+        user.password_hash
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
         )
 
     if not user.is_active:
@@ -1406,6 +1615,12 @@ def verify_login_2fa(
             )
         )
 
+    if not data.otp.isdigit() or len(data.otp) != 6:
+        raise HTTPException(
+            status_code=400,
+            detail="OTP must contain exactly 6 digits."
+        )
+
     if not pyotp.TOTP(
         user.two_factor_secret
     ).verify(data.otp):
@@ -1414,14 +1629,114 @@ def verify_login_2fa(
             detail="Invalid or expired OTP."
         )
 
-    access_token = create_access_token(
-        user.id
-    )
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
 
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "requires_2fa": False
+        "refresh_token": refresh_token,
+        "requires_2fa": False,
+        "requires_session_2fa": False
+    }
+
+
+# =========================================================
+# REFRESH ACCESS TOKEN
+# =========================================================
+
+@router.post(
+    "/session/refresh",
+    response_model=TokenResponse
+)
+def refresh_session(
+    data: SessionRefreshRequest,
+    db: Session = Depends(get_db)
+):
+    user_id = decode_refresh_token(
+        data.refresh_token
+    )
+
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Refresh token is invalid or expired. "
+                "Please login again."
+            )
+        )
+
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid refresh token."
+        )
+
+    user = db.query(User).filter(
+        User.id == user_id
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found."
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="User account is inactive."
+        )
+
+    if user.two_factor_enabled:
+        if not data.otp:
+            return {
+                "access_token": None,
+                "token_type": "bearer",
+                "refresh_token": data.refresh_token,
+                "requires_2fa": False,
+                "requires_session_2fa": True
+            }
+
+        if (
+            not data.otp.isdigit()
+            or len(data.otp) != 6
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="OTP must contain exactly 6 digits."
+            )
+
+        if not user.two_factor_secret:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "2FA secret is not configured."
+                )
+            )
+
+        if not pyotp.TOTP(
+            user.two_factor_secret
+        ).verify(
+            data.otp,
+            valid_window=1
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired OTP."
+            )
+
+    access_token = create_access_token(user.id)
+    new_refresh_token = create_refresh_token(user.id)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "refresh_token": new_refresh_token,
+        "requires_2fa": False,
+        "requires_session_2fa": False
     }
 
 

@@ -107,6 +107,16 @@ function Dashboard() {
     const [googleMessage, setGoogleMessage] =
         useState("");
 
+    const [pinSet, setPinSet] = useState(false);
+    const [pinLoading, setPinLoading] = useState(false);
+    const [pinMessage, setPinMessage] = useState("");
+    const [pinSuccess, setPinSuccess] = useState(false);
+    const [pinMode, setPinMode] =
+        useState<"set" | "change" | null>(null);
+    const [currentPin, setCurrentPin] = useState("");
+    const [newPin, setNewPin] = useState("");
+    const [confirmPin, setConfirmPin] = useState("");
+
     useEffect(() => {
         const loadAutofillPreference =
             async () => {
@@ -169,6 +179,94 @@ function Dashboard() {
 
         loadGoogleStatus();
     }, []);
+
+    useEffect(() => {
+        const loadPinStatus = async () => {
+            try {
+                const response = await api.get(
+                    "/auth/password-view-pin/status"
+                );
+                setPinSet(Boolean(response.data?.pin_set));
+            } catch (error) {
+                console.error(
+                    "Failed to load password view PIN status",
+                    error
+                );
+            }
+        };
+
+        loadPinStatus();
+    }, []);
+
+    const resetPinForm = () => {
+        setPinMode(null);
+        setCurrentPin("");
+        setNewPin("");
+        setConfirmPin("");
+        setPinMessage("");
+        setPinSuccess(false);
+    };
+
+    const handlePinSubmit = async () => {
+        setPinMessage("");
+        setPinSuccess(false);
+
+        if (!pinMode) return;
+
+        if (pinMode === "change" && !/^\d{6}$/.test(currentPin)) {
+            setPinMessage("Current PIN must be exactly 6 digits.");
+            return;
+        }
+
+        if (!/^\d{6}$/.test(newPin)) {
+            setPinMessage("PIN must be exactly 6 digits.");
+            return;
+        }
+
+        if (newPin !== confirmPin) {
+            setPinMessage("PIN and confirm PIN do not match.");
+            return;
+        }
+
+        try {
+            setPinLoading(true);
+
+            const response = pinMode === "set"
+                ? await api.post(
+                    "/auth/password-view-pin/set",
+                    { pin: newPin }
+                )
+                : await api.put(
+                    "/auth/password-view-pin/change",
+                    {
+                        current_pin: currentPin,
+                        new_pin: newPin
+                    }
+                );
+
+            setPinSet(true);
+            setPinSuccess(true);
+            setPinMessage(
+                response.data?.message ||
+                "Password view PIN updated successfully."
+            );
+            setCurrentPin("");
+            setNewPin("");
+            setConfirmPin("");
+
+            setTimeout(() => {
+                setPinMode(null);
+                setPinMessage("");
+            }, 1200);
+        } catch (error: any) {
+            setPinMessage(
+                error.response?.data?.detail ||
+                "Failed to update password view PIN."
+            );
+        } finally {
+            setPinLoading(false);
+        }
+    };
 
     const handleAutofillToggle =
         async () => {
@@ -768,6 +866,146 @@ function Dashboard() {
                             }
                         </button>
 
+                    </div>
+
+                </section>
+
+                <section className="security-section">
+
+                    <h2>
+                        Password View Security
+                    </h2>
+
+                    <div className="security-alert">
+                        <strong>Password View PIN</strong>
+
+                        <p>
+                            Protect your saved passwords with a 6-digit PIN.
+                            The PIN is required whenever you view or edit a saved password.
+                        </p>
+
+                        <p>
+                            <strong>
+                                Status: {pinSet ? "Enabled" : "Not Set"}
+                            </strong>
+                        </p>
+
+                        {!pinMode && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setPinMode(pinSet ? "change" : "set");
+                                    setPinMessage("");
+                                    setPinSuccess(false);
+                                }}
+                            >
+                                {pinSet ? "Change PIN" : "Set PIN"}
+                            </button>
+                        )}
+
+                        {pinMode && (
+                            <div
+                                className="password-change-box"
+                                style={{ marginTop: "15px" }}
+                            >
+                                <h3>
+                                    {pinMode === "set"
+                                        ? "Set Password View PIN"
+                                        : "Change Password View PIN"}
+                                </h3>
+
+                                {pinMode === "change" && (
+                                    <input
+                                        type="password"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        placeholder="Current 6-digit PIN"
+                                        value={currentPin}
+                                        onChange={(e) =>
+                                            setCurrentPin(
+                                                e.target.value
+                                                    .replace(/\D/g, "")
+                                                    .slice(0, 6)
+                                            )
+                                        }
+                                    />
+                                )}
+
+                                <input
+                                    type="password"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    placeholder={
+                                        pinMode === "set"
+                                            ? "Create 6-digit PIN"
+                                            : "New 6-digit PIN"
+                                    }
+                                    value={newPin}
+                                    onChange={(e) =>
+                                        setNewPin(
+                                            e.target.value
+                                                .replace(/\D/g, "")
+                                                .slice(0, 6)
+                                        )
+                                    }
+                                />
+
+                                <input
+                                    type="password"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    placeholder="Confirm 6-digit PIN"
+                                    value={confirmPin}
+                                    onChange={(e) =>
+                                        setConfirmPin(
+                                            e.target.value
+                                                .replace(/\D/g, "")
+                                                .slice(0, 6)
+                                        )
+                                    }
+                                />
+
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        gap: "10px",
+                                        marginTop: "10px"
+                                    }}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={handlePinSubmit}
+                                        disabled={pinLoading}
+                                    >
+                                        {pinLoading
+                                            ? "Saving..."
+                                            : pinMode === "set"
+                                                ? "Set PIN"
+                                                : "Change PIN"}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={resetPinForm}
+                                        disabled={pinLoading}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+
+                                {pinMessage && (
+                                    <p
+                                        className={
+                                            pinSuccess
+                                                ? "success-message"
+                                                : "form-message"
+                                        }
+                                    >
+                                        {pinMessage}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                 </section>

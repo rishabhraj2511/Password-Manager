@@ -36,15 +36,11 @@ api.interceptors.request.use(
 
         return config;
     },
-    (error) => {
-        return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
 );
 
 api.interceptors.response.use(
-    (response) => {
-        return response;
-    },
+    (response) => response,
     async (error) => {
         const status =
             error.response?.status;
@@ -53,21 +49,12 @@ api.interceptors.response.use(
             error.config?.url || "";
 
         const isAuthRequest =
-            requestUrl.includes(
-                "/auth/login"
-            ) ||
-            requestUrl.includes(
-                "/auth/2fa/login-verify"
-            ) ||
-            requestUrl.includes(
-                "/auth/register"
-            ) ||
-            requestUrl.includes(
-                "/auth/forgot-password"
-            ) ||
-            requestUrl.includes(
-                "/auth/reset-password"
-            );
+            requestUrl.includes("/auth/login") ||
+            requestUrl.includes("/auth/2fa/login-verify") ||
+            requestUrl.includes("/auth/register") ||
+            requestUrl.includes("/auth/forgot-password") ||
+            requestUrl.includes("/auth/reset-password") ||
+            requestUrl.includes("/auth/session/refresh");
 
         let message =
             "Something went wrong. Please try again.";
@@ -85,9 +72,9 @@ api.interceptors.response.use(
                 "Your session has expired. Please log in again.";
 
             if (!isAuthRequest) {
-                await chrome.storage.local.remove(
+                await chrome.storage.local.remove([
                     "token"
-                );
+                ]);
             }
         } else if (status === 403) {
             message =
@@ -107,8 +94,7 @@ api.interceptors.response.use(
                 error.response.data.detail;
         }
 
-        error.vaultxMessage =
-            message;
+        error.vaultxMessage = message;
 
         return Promise.reject(error);
     }

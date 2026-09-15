@@ -5,13 +5,19 @@ import { useAuth } from "../Context/AuthContext";
 
 function Login() {
     const navigate = useNavigate();
-    const { login } = useAuth();
+
+    const {
+        login,
+        session2FARequired,
+        verifySession2FA
+    } = useAuth();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [otp, setOtp] = useState("");
 
-    const [requires2FA, setRequires2FA] = useState(false);
+    const [requires2FA, setRequires2FA] =
+        useState(session2FARequired);
 
     const [message, setMessage] = useState("");
     const [loading, setLoading] = useState(false);
@@ -41,21 +47,20 @@ function Login() {
                 return;
             }
 
-            login(
-                response.data.access_token
+            await login(
+                response.data.access_token,
+                response.data.refresh_token
             );
 
-            setMessage(
-                "Login successful!"
-            );
+            setMessage("Login successful!");
 
             setTimeout(() => {
                 navigate("/dashboard");
-            }, 500);
-
+            }, 300);
         } catch (error: any) {
             setMessage(
                 error.response?.data?.detail ||
+                error.vaultxMessage ||
                 "Login failed"
             );
         } finally {
@@ -63,20 +68,12 @@ function Login() {
         }
     };
 
-
     const handle2FAVerification = async (
         e: React.FormEvent
     ) => {
         e.preventDefault();
 
-        if (!otp) {
-            setMessage(
-                "Please enter your 6-digit OTP."
-            );
-            return;
-        }
-
-        if (!/^\d{6}$/.test(otp)) {
+        if (!otp || !/^\d{6}$/.test(otp)) {
             setMessage(
                 "OTP must be a 6-digit number."
             );
@@ -87,17 +84,31 @@ function Login() {
         setMessage("");
 
         try {
-            const response = await api.post(
-                "/auth/2fa/login-verify",
-                {
-                    email,
-                    otp
-                }
-            );
+            if (session2FARequired) {
+                const success =
+                    await verifySession2FA(otp);
 
-            login(
-                response.data.access_token
-            );
+                if (!success) {
+                    setMessage(
+                        "Invalid OTP or session expired."
+                    );
+                    return;
+                }
+            } else {
+                const response = await api.post(
+                    "/auth/2fa/login-verify",
+                    {
+                        email,
+                        password,
+                        otp
+                    }
+                );
+
+                await login(
+                    response.data.access_token,
+                    response.data.refresh_token
+                );
+            }
 
             setMessage(
                 "2FA verified. Login successful!"
@@ -105,11 +116,11 @@ function Login() {
 
             setTimeout(() => {
                 navigate("/dashboard");
-            }, 500);
-
+            }, 300);
         } catch (error: any) {
             setMessage(
                 error.response?.data?.detail ||
+                error.vaultxMessage ||
                 "OTP verification failed."
             );
         } finally {
@@ -117,28 +128,24 @@ function Login() {
         }
     };
 
+    const isSessionVerification =
+        session2FARequired;
 
     return (
         <div>
-
             <h1>VaultX</h1>
 
-            {!requires2FA ? (
+            {!requires2FA && !isSessionVerification ? (
                 <>
                     <h2>Login</h2>
 
-                    <form
-                        onSubmit={handleLogin}
-                    >
-
+                    <form onSubmit={handleLogin}>
                         <input
                             type="email"
                             placeholder="Email"
                             value={email}
                             onChange={(e) =>
-                                setEmail(
-                                    e.target.value
-                                )
+                                setEmail(e.target.value)
                             }
                             required
                         />
@@ -148,9 +155,7 @@ function Login() {
                             placeholder="Password"
                             value={password}
                             onChange={(e) =>
-                                setPassword(
-                                    e.target.value
-                                )
+                                setPassword(e.target.value)
                             }
                             required
                         />
@@ -163,26 +168,25 @@ function Login() {
                                 ? "Logging in..."
                                 : "Login"}
                         </button>
-
                     </form>
                 </>
             ) : (
                 <>
                     <h2>
-                        Two-Factor Authentication
+                        {isSessionVerification
+                            ? "Session Verification"
+                            : "Two-Factor Authentication"}
                     </h2>
 
                     <p>
-                        Enter the 6-digit code
-                        from your authenticator app.
+                        {isSessionVerification
+                            ? "Your session needs verification. Enter only the OTP from your authenticator app."
+                            : "Enter the 6-digit code from your authenticator app."}
                     </p>
 
                     <form
-                        onSubmit={
-                            handle2FAVerification
-                        }
+                        onSubmit={handle2FAVerification}
                     >
-
                         <input
                             type="text"
                             inputMode="numeric"
@@ -191,8 +195,7 @@ function Login() {
                             value={otp}
                             onChange={(e) =>
                                 setOtp(
-                                    e.target.value
-                                        .replace(/\D/g, "")
+                                    e.target.value.replace(/\D/g, "")
                                 )
                             }
                             required
@@ -206,33 +209,30 @@ function Login() {
                                 ? "Verifying..."
                                 : "Verify OTP"}
                         </button>
-
                     </form>
 
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setRequires2FA(false);
-                            setOtp("");
-                            setMessage("");
-                        }}
-                    >
-                        Back to Login
-                    </button>
+                    {!isSessionVerification && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setRequires2FA(false);
+                                setOtp("");
+                                setMessage("");
+                            }}
+                        >
+                            Back to Login
+                        </button>
+                    )}
                 </>
             )}
 
-            <p>
-                {message}
-            </p>
+            <p>{message}</p>
 
-            {!requires2FA && (
+            {!requires2FA && !isSessionVerification && (
                 <>
                     <button
                         onClick={() =>
-                            navigate(
-                                "/forgot-password"
-                            )
+                            navigate("/forgot-password")
                         }
                     >
                         Forgot Password?
@@ -247,7 +247,6 @@ function Login() {
                     </button>
                 </>
             )}
-
         </div>
     );
 }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import api from "../Services/api";
 
+type PinAction = "reveal" | "edit" | null;
+
 function CredentialItem({
     credential,
     onDeleted
@@ -30,9 +32,14 @@ function CredentialItem({
         credential.notes || ""
     );
 
-    const getPasswordStrength = (
-        value: string
-    ) => {
+    // Password-view PIN modal state
+    const [pinModalOpen, setPinModalOpen] = useState(false);
+    const [pin, setPin] = useState("");
+    const [pinError, setPinError] = useState("");
+    const [pinVerifying, setPinVerifying] = useState(false);
+    const [pinAction, setPinAction] = useState<PinAction>(null);
+
+    const getPasswordStrength = (value: string) => {
         if (!value) {
             return {
                 label: "",
@@ -69,22 +76,73 @@ function CredentialItem({
         };
     };
 
-    const passwordStrength =
-        getPasswordStrength(password);
+    const passwordStrength = getPasswordStrength(password);
+
+    const openPinModal = (action: PinAction) => {
+        setPinAction(action);
+        setPin("");
+        setPinError("");
+        setPinModalOpen(true);
+    };
+
+    const closePinModal = () => {
+        if (pinVerifying) return;
+
+        setPinModalOpen(false);
+        setPin("");
+        setPinError("");
+        setPinAction(null);
+    };
+
+    const verifyPinAndContinue = async () => {
+        if (!/^\d{6}$/.test(pin)) {
+            setPinError("Enter exactly 6 digits.");
+            return;
+        }
+
+        try {
+            setPinVerifying(true);
+            setPinError("");
+
+            await api.post(
+                "/auth/password-view-pin/verify",
+                {
+                    pin
+                }
+            );
+
+            const action = pinAction;
+
+            setPinModalOpen(false);
+            setPin("");
+            setPinAction(null);
+
+            if (action === "reveal") {
+                await revealPassword();
+            }
+
+            if (action === "edit") {
+                await loadPasswordForEditing();
+            }
+        } catch (error: any) {
+            setPinError(
+                error.response?.data?.detail ||
+                "Incorrect password view PIN."
+            );
+        } finally {
+            setPinVerifying(false);
+        }
+    };
 
     const revealPassword = async () => {
         try {
             setLoading(true);
 
-            const response =
-                await api.post(
-                    `/credentials/${credential.id}/reveal`
-                );
-
-            setPassword(
-                response.data.password
+            const response = await api.post(
+                `/credentials/${credential.id}/reveal`
             );
 
+            setPassword(response.data.password);
             setRevealed(true);
 
             setTimeout(() => {
@@ -105,19 +163,15 @@ function CredentialItem({
         }
     };
 
-    const startEditing = async () => {
+    const loadPasswordForEditing = async () => {
         try {
             setLoading(true);
 
-            const response =
-                await api.post(
-                    `/credentials/${credential.id}/reveal`
-                );
-
-            setPassword(
-                response.data.password
+            const response = await api.post(
+                `/credentials/${credential.id}/reveal`
             );
 
+            setPassword(response.data.password);
             setRevealed(false);
             setEditing(true);
         } catch (error) {
@@ -130,6 +184,20 @@ function CredentialItem({
         }
     };
 
+    const handleRevealClick = () => {
+        if (revealed) {
+            setPassword("");
+            setRevealed(false);
+            return;
+        }
+
+        openPinModal("reveal");
+    };
+
+    const handleEditClick = () => {
+        openPinModal("edit");
+    };
+
     const copyToClipboard = async (
         value: string,
         type: string
@@ -139,9 +207,7 @@ function CredentialItem({
         }
 
         try {
-            await navigator.clipboard.writeText(
-                value
-            );
+            await navigator.clipboard.writeText(value);
 
             setCopied(type);
 
@@ -163,19 +229,11 @@ function CredentialItem({
             await api.put(
                 `/credentials/${credential.id}`,
                 {
-                    vault_id:
-                        credential.vault_id,
-
+                    vault_id: credential.vault_id,
                     title,
-
                     username,
-
-                    encrypted_password:
-                        password,
-
-                    website_url:
-                        websiteUrl,
-
+                    encrypted_password: password,
+                    website_url: websiteUrl,
                     notes
                 }
             );
@@ -187,8 +245,7 @@ function CredentialItem({
         } catch (error: any) {
             console.error(
                 "Failed to update credential",
-                error.response?.data ||
-                    error
+                error.response?.data || error
             );
         } finally {
             setLoading(false);
@@ -196,10 +253,9 @@ function CredentialItem({
     };
 
     const deleteCredential = async () => {
-        const confirmDelete =
-            window.confirm(
-                `Delete account "${credential.username}"?`
-            );
+        const confirmDelete = window.confirm(
+            `Delete account "${credential.username}"?`
+        );
 
         if (!confirmDelete) {
             return;
@@ -223,376 +279,404 @@ function CredentialItem({
         }
     };
 
-    /*
-     * EDIT MODE
-     */
-
-    if (editing) {
-        return (
-            <div
-                className="credential-card"
-                style={{
-                    marginBottom: "12px"
-                }}
-            >
-                <div className="edit-header">
-                    <h3>
-                        Edit Account
-                    </h3>
-                </div>
-
-                <div className="edit-form">
-
-                    <input
-                        value={title}
-                        onChange={(e) =>
-                            setTitle(
-                                e.target.value
-                            )
-                        }
-                        placeholder="Title"
-                    />
-
-                    <input
-                        value={username}
-                        onChange={(e) =>
-                            setUsername(
-                                e.target.value
-                            )
-                        }
-                        placeholder="Username"
-                    />
-
-                    <div className="password-input-group">
-
-                        <input
-                            type="text"
-                            value={password}
-                            onChange={(e) =>
-                                setPassword(
-                                    e.target.value
-                                )
-                            }
-                            placeholder="Password"
-                        />
-
+    return (
+        <>
+            {editing ? (
+                <div
+                    className="credential-card"
+                    style={{
+                        marginBottom: "12px"
+                    }}
+                >
+                    <div className="edit-header">
+                        <h3>Edit Account</h3>
                     </div>
 
-                    {password && (
-                        <div className="password-strength">
+                    <div className="edit-form">
+                        <input
+                            value={title}
+                            onChange={(e) =>
+                                setTitle(e.target.value)
+                            }
+                            placeholder="Title"
+                        />
 
-                            <div className="strength-header">
+                        <input
+                            value={username}
+                            onChange={(e) =>
+                                setUsername(e.target.value)
+                            }
+                            placeholder="Username"
+                        />
 
-                                <span>
-                                    Password Strength
-                                </span>
+                        <div className="password-input-group">
+                            <input
+                                type="text"
+                                value={password}
+                                onChange={(e) =>
+                                    setPassword(e.target.value)
+                                }
+                                placeholder="Password"
+                            />
+                        </div>
 
-                                <strong
-                                    className={`strength-${passwordStrength.label.toLowerCase()}`}
-                                >
-                                    {
-                                        passwordStrength.label
+                        {password && (
+                            <div className="password-strength">
+                                <div className="strength-header">
+                                    <span>
+                                        Password Strength
+                                    </span>
+
+                                    <strong
+                                        className={`strength-${passwordStrength.label.toLowerCase()}`}
+                                    >
+                                        {passwordStrength.label}
+                                    </strong>
+                                </div>
+
+                                <div className="strength-bar">
+                                    <div
+                                        className={`strength-fill strength-${passwordStrength.label.toLowerCase()}`}
+                                        style={{
+                                            width:
+                                                passwordStrength.label ===
+                                                "Weak"
+                                                    ? "33%"
+                                                    : passwordStrength.label ===
+                                                        "Medium"
+                                                        ? "66%"
+                                                        : "100%"
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <input
+                            value={websiteUrl}
+                            onChange={(e) =>
+                                setWebsiteUrl(e.target.value)
+                            }
+                            placeholder="Website URL"
+                        />
+
+                        <input
+                            value={notes}
+                            onChange={(e) =>
+                                setNotes(e.target.value)
+                            }
+                            placeholder="Notes"
+                        />
+
+                        <div className="credential-actions">
+                            <button
+                                className="save-btn"
+                                onClick={updateCredential}
+                                disabled={loading}
+                            >
+                                {loading ? "Saving..." : "Save"}
+                            </button>
+
+                            <button
+                                className="cancel-btn"
+                                onClick={() => {
+                                    setEditing(false);
+                                    setPassword("");
+                                }}
+                                disabled={loading}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div
+                    className="credential-account-row"
+                    style={{
+                        padding: "12px 10px",
+                        borderTop: "1px solid #27272a",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px"
+                    }}
+                >
+                    <div
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px"
+                        }}
+                    >
+                        <div
+                            style={{
+                                minWidth: 0
+                            }}
+                        >
+                            <strong
+                                style={{
+                                    display: "block",
+                                    fontSize: "14px",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap"
+                                }}
+                            >
+                                {credential.username || "No username"}
+                            </strong>
+
+                            <span
+                                style={{
+                                    display: "block",
+                                    marginTop: "3px",
+                                    fontSize: "11px",
+                                    color: "#a1a1aa"
+                                }}
+                            >
+                                {credential.notes || "Saved account"}
+                            </span>
+                        </div>
+
+                        {credential.username && (
+                            <button
+                                className="copy-btn"
+                                onClick={() =>
+                                    copyToClipboard(
+                                        credential.username,
+                                        "username"
+                                    )
+                                }
+                            >
+                                {copied === "username"
+                                    ? "Copied!"
+                                    : "Copy"}
+                            </button>
+                        )}
+                    </div>
+
+                    {revealed && (
+                        <div
+                            className="password-box"
+                            style={{
+                                marginTop: "2px"
+                            }}
+                        >
+                            <span>Password</span>
+
+                            <div className="copy-field">
+                                <strong>{password}</strong>
+
+                                <button
+                                    className="copy-btn"
+                                    onClick={() =>
+                                        copyToClipboard(
+                                            password,
+                                            "password"
+                                        )
                                     }
-                                </strong>
-
+                                >
+                                    {copied === "password"
+                                        ? "Copied!"
+                                        : "Copy"}
+                                </button>
                             </div>
 
-                            <div className="strength-bar">
-
-                                <div
-                                    className={`strength-fill strength-${passwordStrength.label.toLowerCase()}`}
-                                    style={{
-                                        width:
-                                            passwordStrength.label ===
-                                            "Weak"
-                                                ? "33%"
-                                                : passwordStrength.label ===
-                                                    "Medium"
-                                                    ? "66%"
-                                                    : "100%"
-                                    }}
-                                />
-
-                            </div>
-
+                            <small>
+                                Password will hide automatically
+                                after 10 seconds.
+                            </small>
                         </div>
                     )}
 
-                    <input
-                        value={websiteUrl}
-                        onChange={(e) =>
-                            setWebsiteUrl(
-                                e.target.value
-                            )
-                        }
-                        placeholder="Website URL"
-                    />
-
-                    <input
-                        value={notes}
-                        onChange={(e) =>
-                            setNotes(
-                                e.target.value
-                            )
-                        }
-                        placeholder="Notes"
-                    />
-
-                    <div className="credential-actions">
-
+                    <div
+                        className="credential-actions"
+                        style={{
+                            marginTop: "0"
+                        }}
+                    >
                         <button
-                            className="save-btn"
-                            onClick={
-                                updateCredential
-                            }
-                            disabled={
-                                loading
-                            }
+                            className="reveal-btn"
+                            onClick={handleRevealClick}
+                            disabled={loading}
                         >
                             {loading
-                                ? "Saving..."
-                                : "Save"}
+                                ? "Loading..."
+                                : revealed
+                                    ? "Hide Password"
+                                    : "Reveal Password"}
                         </button>
 
                         <button
-                            className="cancel-btn"
-                            onClick={() => {
-                                setEditing(
-                                    false
-                                );
-
-                                setPassword("");
-                            }}
-                            disabled={
-                                loading
-                            }
+                            className="edit-btn"
+                            onClick={handleEditClick}
+                            disabled={loading}
                         >
-                            Cancel
+                            Edit
                         </button>
-
-                    </div>
-
-                </div>
-            </div>
-        );
-    }
-
-    /*
-     * ACCOUNT ROW
-     *
-     * This is intentionally compact.
-     * Dashboard groups multiple accounts
-     * under the same website.
-     */
-
-    return (
-        <div
-            className="credential-account-row"
-            style={{
-                padding:
-                    "12px 10px",
-
-                borderTop:
-                    "1px solid #27272a",
-
-                display:
-                    "flex",
-
-                flexDirection:
-                    "column",
-
-                gap:
-                    "10px"
-            }}
-        >
-
-            <div
-                style={{
-                    display:
-                        "flex",
-
-                    alignItems:
-                        "center",
-
-                    justifyContent:
-                        "space-between",
-
-                    gap:
-                        "10px"
-                }}
-            >
-
-                <div
-                    style={{
-                        minWidth:
-                            0
-                    }}
-                >
-
-                    <strong
-                        style={{
-                            display:
-                                "block",
-
-                            fontSize:
-                                "14px",
-
-                            overflow:
-                                "hidden",
-
-                            textOverflow:
-                                "ellipsis",
-
-                            whiteSpace:
-                                "nowrap"
-                        }}
-                    >
-                        {
-                            credential.username ||
-                            "No username"
-                        }
-                    </strong>
-
-                    <span
-                        style={{
-                            display:
-                                "block",
-
-                            marginTop:
-                                "3px",
-
-                            fontSize:
-                                "11px",
-
-                            color:
-                                "#a1a1aa"
-                        }}
-                    >
-                        {credential.notes ||
-                            "Saved account"}
-                    </span>
-
-                </div>
-
-                {credential.username && (
-                    <button
-                        className="copy-btn"
-                        onClick={() =>
-                            copyToClipboard(
-                                credential.username,
-                                "username"
-                            )
-                        }
-                    >
-                        {
-                            copied ===
-                            "username"
-                                ? "Copied!"
-                                : "Copy"
-                        }
-                    </button>
-                )}
-
-            </div>
-
-            {revealed && (
-                <div
-                    className="password-box"
-                    style={{
-                        marginTop:
-                            "2px"
-                    }}
-                >
-
-                    <span>
-                        Password
-                    </span>
-
-                    <div className="copy-field">
-
-                        <strong>
-                            {password}
-                        </strong>
 
                         <button
-                            className="copy-btn"
-                            onClick={() =>
-                                copyToClipboard(
-                                    password,
-                                    "password"
-                                )
-                            }
+                            className="delete-btn"
+                            onClick={deleteCredential}
+                            disabled={loading}
                         >
-                            {
-                                copied ===
-                                "password"
-                                    ? "Copied!"
-                                    : "Copy"
-                            }
+                            Delete
                         </button>
-
                     </div>
-
-                    <small>
-                        Password will hide
-                        automatically after
-                        10 seconds.
-                    </small>
-
                 </div>
             )}
 
-            <div
-                className="credential-actions"
-                style={{
-                    marginTop:
-                        "0"
-                }}
-            >
-
-                <button
-                    className="reveal-btn"
-                    onClick={
-                        revealPassword
-                    }
-                    disabled={
-                        loading
-                    }
+            {pinModalOpen && (
+                <div
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0, 0, 0, 0.7)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 9999,
+                        padding: "20px"
+                    }}
                 >
-                    {loading
-                        ? "Revealing..."
-                        : revealed
-                            ? "Password Revealed"
-                            : "Reveal Password"}
-                </button>
+                    <div
+                        style={{
+                            width: "100%",
+                            maxWidth: "360px",
+                            background: "#18181b",
+                            border: "1px solid #3f3f46",
+                            borderRadius: "12px",
+                            padding: "24px",
+                            boxShadow:
+                                "0 20px 50px rgba(0, 0, 0, 0.4)"
+                        }}
+                    >
+                        <h3
+                            style={{
+                                margin: "0 0 8px",
+                                color: "#ffffff"
+                            }}
+                        >
+                            Verify Password View PIN
+                        </h3>
 
-                <button
-                    className="edit-btn"
-                    onClick={
-                        startEditing
-                    }
-                    disabled={
-                        loading
-                    }
-                >
-                    Edit
-                </button>
+                        <p
+                            style={{
+                                margin: "0 0 18px",
+                                color: "#a1a1aa",
+                                fontSize: "13px"
+                            }}
+                        >
+                            Enter your 6-digit PIN to{" "}
+                            {pinAction === "edit"
+                                ? "edit this saved password."
+                                : "view this saved password."}
+                        </p>
 
-                <button
-                    className="delete-btn"
-                    onClick={
-                        deleteCredential
-                    }
-                    disabled={
-                        loading
-                    }
-                >
-                    Delete
-                </button>
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={6}
+                            autoFocus
+                            value={pin}
+                            placeholder="Enter 6-digit PIN"
+                            onChange={(e) => {
+                                const value =
+                                    e.target.value.replace(
+                                        /\D/g,
+                                        ""
+                                    );
 
-            </div>
+                                setPin(value);
+                                setPinError("");
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    verifyPinAndContinue();
+                                }
+                            }}
+                            style={{
+                                width: "100%",
+                                boxSizing: "border-box",
+                                padding: "12px",
+                                borderRadius: "8px",
+                                border: "1px solid #52525b",
+                                background: "#27272a",
+                                color: "#ffffff",
+                                fontSize: "18px",
+                                letterSpacing: "5px",
+                                textAlign: "center",
+                                outline: "none"
+                            }}
+                        />
 
-        </div>
+                        {pinError && (
+                            <p
+                                style={{
+                                    color: "#f87171",
+                                    fontSize: "12px",
+                                    margin: "10px 0 0"
+                                }}
+                            >
+                                {pinError}
+                            </p>
+                        )}
+
+                        <div
+                            style={{
+                                display: "flex",
+                                gap: "10px",
+                                marginTop: "20px"
+                            }}
+                        >
+                            <button
+                                type="button"
+                                onClick={closePinModal}
+                                disabled={pinVerifying}
+                                style={{
+                                    flex: 1,
+                                    padding: "11px",
+                                    borderRadius: "8px",
+                                    border: "1px solid #52525b",
+                                    background: "transparent",
+                                    color: "#ffffff",
+                                    cursor: "pointer"
+                                }}
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={verifyPinAndContinue}
+                                disabled={
+                                    pinVerifying ||
+                                    pin.length !== 6
+                                }
+                                style={{
+                                    flex: 1,
+                                    padding: "11px",
+                                    borderRadius: "8px",
+                                    border: "none",
+                                    background: "#6366f1",
+                                    color: "#ffffff",
+                                    cursor: "pointer",
+                                    opacity:
+                                        pinVerifying ||
+                                        pin.length !== 6
+                                            ? 0.6
+                                            : 1
+                                }}
+                            >
+                                {pinVerifying
+                                    ? "Verifying..."
+                                    : "Verify PIN"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
 

@@ -43,19 +43,7 @@ class User(Base):
         nullable=True
     )
 
-    # Password reset
-    reset_token_hash: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-        index=True
-    )
-
-    reset_token_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime,
-        nullable=True
-    )
-
-    # Google OAuth - College Assistant
+    # Google OAuth / Gmail integration
     google_access_token: Mapped[str | None] = mapped_column(
         String(2048),
         nullable=True
@@ -73,6 +61,24 @@ class User(Base):
 
     google_account_email: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True
+    )
+
+    # Password-view PIN (stored only as a bcrypt hash)
+    password_view_pin_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True
+    )
+
+    # Password reset
+    reset_token_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True
+    )
+
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True
     )
 
