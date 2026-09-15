@@ -1,21 +1,12 @@
-/* =========================================================
-   VAULTX CONTENT SCRIPT
-   Login Autofill + Gmail OTP Autofill
-   ========================================================= */
-
-"use strict";
-
-
-/* =========================================================
-   GLOBAL STATE
-   ========================================================= */
+console.log(
+    "VaultX content script loaded:",
+    window.location.hostname
+);
 
 let currentCredentials = [];
 let checkInProgress = false;
 let otpCheckInProgress = false;
-
-let lastOtpFilled = "";
-let lastOtpFillTime = 0;
+let lastCheckedUrl = window.location.href;
 
 
 /* =========================================================
@@ -24,45 +15,110 @@ let lastOtpFillTime = 0;
 
 function getPageInfo() {
     return {
+        type: "VAULTX_PAGE_INFO",
         url: window.location.href,
-        title: document.title,
         hostname: window.location.hostname,
-        pathname: window.location.pathname
+        title: document.title
     };
 }
 
 
 /* =========================================================
-   NATIVE VALUE SETTER
-   Works better with Angular/React controlled inputs
+   LOGIN FIELD DETECTION
    ========================================================= */
 
-function setNativeValue(element, value) {
-    if (!element) {
+function detectLoginFields() {
+    const inputs =
+        Array.from(
+            document.querySelectorAll("input")
+        );
+
+    const usernameFields =
+        inputs.filter((input) => {
+            const type =
+                (input.type || "").toLowerCase();
+
+            const name =
+                (input.name || "").toLowerCase();
+
+            const id =
+                (input.id || "").toLowerCase();
+
+            const autocomplete =
+                (input.autocomplete || "").toLowerCase();
+
+            const placeholder =
+                (input.placeholder || "").toLowerCase();
+
+            return (
+                type === "email" ||
+                autocomplete === "username" ||
+                name.includes("user") ||
+                name.includes("email") ||
+                id.includes("user") ||
+                id.includes("email") ||
+                id.includes("login") ||
+                placeholder.includes("email") ||
+                placeholder.includes("username")
+            );
+        });
+
+    const passwordFields =
+        inputs.filter(
+            (input) =>
+                (input.type || "").toLowerCase() ===
+                "password"
+        );
+
+    return {
+        usernameFields:
+            usernameFields.length,
+
+        passwordFields:
+            passwordFields.length
+    };
+}
+
+
+/* =========================================================
+   COMMON VISIBILITY CHECK
+   ========================================================= */
+
+function isVisibleInput(input) {
+    if (!input) {
         return false;
     }
 
-    const stringValue = String(value ?? "");
-
-    const prototype =
-        Object.getPrototypeOf(element);
-
-    const descriptor =
-        Object.getOwnPropertyDescriptor(
-            prototype,
-            "value"
-        );
+    if (
+        input.disabled ||
+        input.readOnly
+    ) {
+        return false;
+    }
 
     if (
-        descriptor &&
-        typeof descriptor.set === "function"
+        (input.type || "").toLowerCase() ===
+        "hidden"
     ) {
-        descriptor.set.call(
-            element,
-            stringValue
-        );
-    } else {
-        element.value = stringValue;
+        return false;
+    }
+
+    const style =
+        window.getComputedStyle(input);
+
+    if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        style.opacity === "0"
+    ) {
+        return false;
+    }
+
+    if (
+        input.offsetWidth === 0 ||
+        input.offsetHeight === 0
+    ) {
+        return false;
     }
 
     return true;
@@ -70,139 +126,80 @@ function setNativeValue(element, value) {
 
 
 /* =========================================================
-   DISPATCH INPUT EVENTS
+   CHECK WHETHER ELEMENT BELONGS TO VAULTX UI
    ========================================================= */
 
-function dispatchInputEvents(element, value) {
-    if (!element) {
-        return;
-    }
-
-    const digit = String(value ?? "");
-
-    try {
-        element.dispatchEvent(
-            new InputEvent("input", {
-                bubbles: true,
-                cancelable: true,
-                inputType: "insertText",
-                data: digit
-            })
-        );
-    } catch (error) {
-        element.dispatchEvent(
-            new Event("input", {
-                bubbles: true
-            })
-        );
-    }
-
-    element.dispatchEvent(
-        new Event("change", {
-            bubbles: true
-        })
-    );
-
-    element.dispatchEvent(
-        new Event("blur", {
-            bubbles: true
-        })
-    );
-}
-
-
-/* =========================================================
-   DISPATCH KEYBOARD EVENTS
-   ========================================================= */
-
-function dispatchKeyboardEvents(element, value) {
-    if (!element) {
-        return;
-    }
-
-    const digit = String(value ?? "");
-
-    if (!digit) {
-        return;
-    }
-
-    const keyCode =
-        digit >= "0" && digit <= "9"
-            ? Number(digit)
-            : 0;
-
-    element.dispatchEvent(
-        new KeyboardEvent("keydown", {
-            key: digit,
-            code: `Digit${digit}`,
-            keyCode,
-            which: keyCode,
-            bubbles: true,
-            cancelable: true
-        })
-    );
-
-    element.dispatchEvent(
-        new KeyboardEvent("keypress", {
-            key: digit,
-            code: `Digit${digit}`,
-            keyCode,
-            which: keyCode,
-            bubbles: true,
-            cancelable: true
-        })
-    );
-
-    element.dispatchEvent(
-        new KeyboardEvent("keyup", {
-            key: digit,
-            code: `Digit${digit}`,
-            keyCode,
-            which: keyCode,
-            bubbles: true,
-            cancelable: true
-        })
-    );
-}
-
-
-/* =========================================================
-   CHECK WHETHER ELEMENT IS VISIBLE
-   ========================================================= */
-
-function isVisibleElement(element) {
+function isVaultXElement(element) {
     if (!element) {
         return false;
     }
 
-    const rect =
-        element.getBoundingClientRect();
-
-    const style =
-        window.getComputedStyle(element);
-
-    return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        style.opacity !== "0"
+    return Boolean(
+        element.closest(
+            "#vaultx-autofill-container"
+        )
     );
 }
 
 
 /* =========================================================
-   FIND USERNAME FIELD
+   OTP MODAL DETECTION
    ========================================================= */
 
-function findUsernameField() {
+function getOtpModalContainers() {
+    const allElements =
+        Array.from(
+            document.querySelectorAll(
+                "div, section, article, form, dialog"
+            )
+        );
+
+    return allElements.filter((element) => {
+        if (
+            isVaultXElement(element)
+        ) {
+            return false;
+        }
+
+        const text = (
+            element.innerText ||
+            element.textContent ||
+            ""
+        ).toLowerCase();
+
+        const hasOtpText =
+            text.includes("otp verification") ||
+            text.includes("enter the otp") ||
+            text.includes("otp sent") ||
+            text.includes("verification code") ||
+            text.includes("one time password") ||
+            text.includes("one-time password") ||
+            text.includes("enter otp") ||
+            text.includes("authentication code");
+
+        return hasOtpText;
+    });
+}
+
+
+/* =========================================================
+   OTP FIELD DETECTION
+   ========================================================= */
+
+function detectOtpFields() {
     const inputs =
         Array.from(
             document.querySelectorAll("input")
         );
 
-    return (
-        inputs.find((input) => {
+    const visibleInputs =
+        inputs.filter(
+            (input) =>
+                isVisibleInput(input)
+        );
+
+    const otpFields =
+        visibleInputs.filter((input) => {
             const type =
                 (input.type || "").toLowerCase();
 
@@ -220,526 +217,142 @@ function findUsernameField() {
 
             const ariaLabel =
                 (
-                    input.getAttribute("aria-label") ||
-                    ""
+                    input.getAttribute(
+                        "aria-label"
+                    ) || ""
                 ).toLowerCase();
 
-            const combined =
-                `${type} ${name} ${id} ${autocomplete} ${placeholder} ${ariaLabel}`;
-
-            const isPassword =
-                type === "password";
-
-            if (isPassword) {
-                return false;
-            }
-
-            return (
-                type === "email" ||
-                autocomplete === "username" ||
-                combined.includes("username") ||
-                combined.includes("user name") ||
-                combined.includes("user_id") ||
-                combined.includes("userid") ||
-                combined.includes("user id") ||
-                combined.includes("email") ||
-                combined.includes("login")
-            );
-        }) || null
-    );
-}
-
-
-/* =========================================================
-   FIND PASSWORD FIELD
-   ========================================================= */
-
-function findPasswordField() {
-    return (
-        document.querySelector(
-            'input[type="password"]'
-        ) || null
-    );
-}
-
-
-/* =========================================================
-   DETECT LOGIN FIELDS
-   ========================================================= */
-
-function detectLoginFields() {
-    const usernameField =
-        findUsernameField();
-
-    const passwordField =
-        findPasswordField();
-
-    return {
-        usernameFields: usernameField ? 1 : 0,
-        passwordFields: passwordField ? 1 : 0,
-        usernameField,
-        passwordField
-    };
-}
-
-
-/* =========================================================
-   FILL LOGIN CREDENTIALS
-   ========================================================= */
-
-function fillCredential(username, password) {
-    const usernameField =
-        findUsernameField();
-
-    const passwordField =
-        findPasswordField();
-
-    let usernameFilled = false;
-    let passwordFilled = false;
-
-    if (
-        usernameField &&
-        username !== undefined &&
-        username !== null
-    ) {
-        setNativeValue(
-            usernameField,
-            username
-        );
-
-        dispatchInputEvents(
-            usernameField,
-            username
-        );
-
-        usernameFilled = true;
-    }
-
-    if (
-        passwordField &&
-        password !== undefined &&
-        password !== null
-    ) {
-        setNativeValue(
-            passwordField,
-            password
-        );
-
-        dispatchInputEvents(
-            passwordField,
-            password
-        );
-
-        passwordFilled = true;
-    }
-
-    console.log(
-        "VaultX credential autofill result:",
-        {
-            usernameFilled,
-            passwordFilled
-        }
-    );
-
-    return (
-        usernameFilled &&
-        passwordFilled
-    );
-}
-
-
-/* =========================================================
-   DETECT OTP FIELDS
-   Exact KIET selector:
-   input.otp-input
-   ========================================================= */
-
-function detectOtpFields() {
-    /*
-     * First priority:
-     * KIET's exact OTP input class.
-     */
-
-    const exactOtpFields =
-        Array.from(
-            document.querySelectorAll(
-                "input.otp-input"
-            )
-        ).filter((input) => {
-            return (
-                isVisibleElement(input) &&
-                !input.disabled &&
-                !input.readOnly
-            );
-        });
-
-    if (exactOtpFields.length > 0) {
-        return exactOtpFields.sort(
-            sortOtpFields
-        );
-    }
-
-    /*
-     * Second priority:
-     * IDs such as otp-0, otp-1, etc.
-     */
-
-    const idOtpFields =
-        Array.from(
-            document.querySelectorAll(
-                'input[id^="otp-"]'
-            )
-        ).filter((input) => {
-            return (
-                isVisibleElement(input) &&
-                !input.disabled &&
-                !input.readOnly
-            );
-        });
-
-    if (idOtpFields.length > 0) {
-        return idOtpFields.sort(
-            sortOtpFields
-        );
-    }
-
-    /*
-     * Fallback detection for other OTP designs.
-     */
-
-    const allInputs =
-        Array.from(
-            document.querySelectorAll("input")
-        );
-
-    const fallbackFields =
-        allInputs.filter((input) => {
-            if (!isVisibleElement(input)) {
-                return false;
-            }
-
-            if (input.disabled || input.readOnly) {
-                return false;
-            }
-
-            const type =
-                (input.type || "").toLowerCase();
-
-            const id =
-                (input.id || "").toLowerCase();
-
-            const name =
-                (input.name || "").toLowerCase();
-
             const className =
-                String(input.className || "")
-                    .toLowerCase();
-
-            const autocomplete =
-                (input.autocomplete || "").toLowerCase();
+                (
+                    typeof input.className ===
+                    "string"
+                        ? input.className
+                        : ""
+                ).toLowerCase();
 
             const inputMode =
                 (input.inputMode || "").toLowerCase();
 
-            const placeholder =
-                (input.placeholder || "").toLowerCase();
-
-            const combined =
-                `${id} ${name} ${className} ${autocomplete} ${placeholder}`;
+            const combinedText = `
+                ${name}
+                ${id}
+                ${autocomplete}
+                ${placeholder}
+                ${ariaLabel}
+                ${className}
+            `.toLowerCase();
 
             const hasOtpKeyword =
-                combined.includes("otp") ||
-                combined.includes("one-time") ||
-                combined.includes("onetime") ||
-                combined.includes("verification") ||
-                combined.includes("verify") ||
-                combined.includes("passcode") ||
-                combined.includes("security code");
+                combinedText.includes("otp") ||
+                combinedText.includes("one-time") ||
+                combinedText.includes("one time") ||
+                combinedText.includes("verification") ||
+                combinedText.includes("verify") ||
+                combinedText.includes("security code") ||
+                combinedText.includes("verification code") ||
+                combinedText.includes("auth code") ||
+                combinedText.includes("authentication code") ||
+                combinedText.includes("passcode");
 
-            const isNumeric =
+            const isNumericInput =
                 type === "number" ||
                 type === "tel" ||
-                inputMode === "numeric";
+                inputMode === "numeric" ||
+                inputMode === "decimal";
 
             const maxLength =
                 Number(input.maxLength);
 
-            const isShortInput =
-                maxLength === 1 ||
-                (
-                    maxLength > 0 &&
-                    maxLength <= 8
-                );
+            const isShortCode =
+                maxLength > 0 &&
+                maxLength <= 8;
+
+            const isSingleOtpBox =
+                maxLength === 1;
 
             return (
                 hasOtpKeyword ||
+                isSingleOtpBox ||
                 (
-                    isNumeric &&
-                    isShortInput
+                    isNumericInput &&
+                    isShortCode
                 )
             );
         });
 
-    return [
-        ...new Set(
-            fallbackFields
-        )
-    ].sort(sortOtpFields);
-}
-
-
-/* =========================================================
-   SORT OTP FIELDS
-   otp-0, otp-1, otp-2...
-   ========================================================= */
-
-function sortOtpFields(a, b) {
-    const aId =
-        String(a.id || "");
-
-    const bId =
-        String(b.id || "");
-
-    const aMatch =
-        aId.match(/(\d+)$/);
-
-    const bMatch =
-        bId.match(/(\d+)$/);
-
-    if (aMatch && bMatch) {
-        return (
-            Number(aMatch[1]) -
-            Number(bMatch[1])
-        );
-    }
-
-    if (aMatch) {
-        return -1;
-    }
-
-    if (bMatch) {
-        return 1;
-    }
-
-    const aRect =
-        a.getBoundingClientRect();
-
-    const bRect =
-        b.getBoundingClientRect();
-
-    return (
-        aRect.left -
-        bRect.left
-    );
-}
-
-
-/* =========================================================
-   FILL ONE OTP FIELD
-   ========================================================= */
-
-function fillSingleOtpField(field, digit) {
-    if (!field) {
-        return;
-    }
-
-    field.focus();
-
-    setNativeValue(
-        field,
-        digit
-    );
-
-    dispatchInputEvents(
-        field,
-        digit
-    );
-
-    dispatchKeyboardEvents(
-        field,
-        digit
-    );
-}
-
-
-/* =========================================================
-   FILL OTP
-   ========================================================= */
-
-function fillOtp(otp) {
-    if (
-        otp === undefined ||
-        otp === null
-    ) {
-        console.warn(
-            "VaultX: OTP is empty."
-        );
-
-        return false;
-    }
-
-    const cleanOtp =
-        String(otp)
-            .replace(/\D/g, "")
-            .slice(0, 6);
-
-    if (
-        cleanOtp.length !== 6
-    ) {
-        console.warn(
-            "VaultX: OTP must contain exactly 6 digits.",
-            otp
-        );
-
-        return false;
-    }
-
     /*
-     * Prevent duplicate fill caused by
-     * background.js and response callback
-     * both sending the OTP.
+     * Some college websites use six separate
+     * one-character OTP input boxes.
      */
+    const separateOtpBoxes =
+        visibleInputs.filter((input) => {
+            const id =
+                (input.id || "").toLowerCase();
 
-    const currentTime =
-        Date.now();
+            const className =
+                (
+                    typeof input.className ===
+                    "string"
+                        ? input.className
+                        : ""
+                ).toLowerCase();
+
+            const maxLength =
+                Number(input.maxLength);
+
+            return (
+                maxLength === 1 &&
+                (
+                    id.includes("otp") ||
+                    className.includes("otp") ||
+                    id.startsWith("otp-") ||
+                    className.includes("verification")
+                )
+            );
+        });
 
     if (
-        lastOtpFilled === cleanOtp &&
-        currentTime - lastOtpFillTime < 1500
+        separateOtpBoxes.length >= 4
     ) {
-        console.log(
-            "VaultX: Duplicate OTP fill ignored."
-        );
-
-        return true;
+        return separateOtpBoxes;
     }
 
-    const otpFields =
-        detectOtpFields();
-
-    console.log(
-        "VaultX: OTP fields found:",
-        otpFields.length,
-        otpFields.map((field) => ({
-            id: field.id,
-            className: field.className,
-            value: field.value
-        }))
-    );
-
-    if (
-        otpFields.length < 6
-    ) {
-        console.warn(
-            "VaultX: Six OTP fields not found.",
-            {
-                required: 6,
-                found: otpFields.length
-            }
-        );
-
-        return false;
-    }
-
-    const fieldsToFill =
-        otpFields.slice(0, 6);
-
-    fieldsToFill.forEach(
-        (field, index) => {
-            fillSingleOtpField(
-                field,
-                cleanOtp[index]
-            );
-        }
-    );
-
-    /*
-     * Focus the last OTP field.
-     * This prevents the page from losing
-     * the OTP input focus.
-     */
-
-    const lastField =
-        fieldsToFill[5];
-
-    if (lastField) {
-        lastField.focus();
-    }
-
-    lastOtpFilled = cleanOtp;
-    lastOtpFillTime = currentTime;
-
-    /*
-     * Verify values after a short delay.
-     */
-
-    setTimeout(() => {
-        const finalValues =
-            fieldsToFill
-                .map((field) => field.value)
-                .join("");
-
-        console.log(
-            "VaultX: OTP values after filling:",
-            finalValues
-        );
-
-        if (finalValues === cleanOtp) {
-            console.log(
-                "VaultX: OTP filled successfully:",
-                cleanOtp
-            );
-        } else {
-            console.warn(
-                "VaultX: OTP values do not match after filling.",
-                {
-                    expected: cleanOtp,
-                    actual: finalValues
-                }
-            );
-        }
-    }, 200);
-
-    return true;
+    return otpFields;
 }
 
 
 /* =========================================================
    WAIT FOR OTP FIELDS
-   OTP modal may load dynamically
    ========================================================= */
 
-function waitForOtpFields(
-    attempts = 12,
+async function waitForOtpFields(
+    attempts = 15,
     delay = 250
 ) {
-    return new Promise((resolve) => {
-        let count = 0;
+    for (
+        let index = 0;
+        index < attempts;
+        index++
+    ) {
+        const otpFields =
+            detectOtpFields();
 
-        const check = () => {
-            const fields =
-                detectOtpFields();
+        if (
+            otpFields.length > 0
+        ) {
+            return otpFields;
+        }
 
-            if (fields.length >= 6) {
-                resolve(fields);
-                return;
-            }
+        await new Promise(
+            (resolve) =>
+                setTimeout(
+                    resolve,
+                    delay
+                )
+        );
+    }
 
-            count++;
-
-            if (count >= attempts) {
-                resolve(fields);
-                return;
-            }
-
-            setTimeout(
-                check,
-                delay
-            );
-        };
-
-        check();
-    });
+    return detectOtpFields();
 }
 
 
@@ -748,15 +361,23 @@ function waitForOtpFields(
    ========================================================= */
 
 chrome.runtime.onMessage.addListener(
-    (message, _sender, sendResponse) => {
+    (
+        message,
+        _sender,
+        sendResponse
+    ) => {
         if (
             message?.type ===
             "VAULTX_GET_PAGE_INFO"
         ) {
             sendResponse({
                 ...getPageInfo(),
-                fields: detectLoginFields(),
-                otpFields: detectOtpFields().length
+
+                fields:
+                    detectLoginFields(),
+
+                otpFields:
+                    detectOtpFields().length
             });
 
             return true;
@@ -806,12 +427,13 @@ chrome.runtime.onMessage.addListener(
             "VAULTX_FILL_OTP"
         ) {
             console.log(
-                "VaultX: OTP fill message received:",
-                message.otp
+                "VaultX: OTP fill message received."
             );
 
             const success =
-                fillOtp(message.otp);
+                fillOtp(
+                    message.otp
+                );
 
             sendResponse({
                 success
@@ -879,7 +501,7 @@ function createBaseContainer() {
 
 
 /* =========================================================
-   HEADER
+   CREATE VAULTX HEADER
    ========================================================= */
 
 function createVaultXHeader() {
@@ -947,7 +569,7 @@ function createVaultXHeader() {
 
 
 /* =========================================================
-   SHOW OTP BUTTON
+   SHOW OTP BUTTON IF NEEDED
    ========================================================= */
 
 function showOtpButtonIfNeeded() {
@@ -957,6 +579,7 @@ function showOtpButtonIfNeeded() {
     if (
         otpFields.length === 0
     ) {
+        removeVaultXUI();
         return;
     }
 
@@ -991,8 +614,22 @@ function showOtpButtonIfNeeded() {
    ========================================================= */
 
 function appendOtpButton(container) {
+    /*
+     * Avoid adding the OTP section twice.
+     */
+    if (
+        container.querySelector(
+            "[data-vaultx-otp-section='true']"
+        )
+    ) {
+        return;
+    }
+
     const otpSection =
         document.createElement("div");
+
+    otpSection.dataset.vaultxOtpSection =
+        "true";
 
     Object.assign(
         otpSection.style,
@@ -1046,7 +683,9 @@ function appendOtpButton(container) {
     otpButton.addEventListener(
         "mouseenter",
         () => {
-            if (!otpButton.disabled) {
+            if (
+                !otpButton.disabled
+            ) {
                 otpButton.style.background =
                     "#1d4ed8";
             }
@@ -1056,7 +695,9 @@ function appendOtpButton(container) {
     otpButton.addEventListener(
         "mouseleave",
         () => {
-            if (!otpButton.disabled) {
+            if (
+                !otpButton.disabled
+            ) {
                 otpButton.style.background =
                     "#2563eb";
             }
@@ -1066,13 +707,21 @@ function appendOtpButton(container) {
     otpButton.addEventListener(
         "click",
         async () => {
-            if (otpCheckInProgress) {
+            if (
+                otpCheckInProgress
+            ) {
                 return;
             }
 
-            otpCheckInProgress = true;
+            otpCheckInProgress =
+                true;
 
-            otpButton.disabled = true;
+            otpButton.disabled =
+                true;
+
+            otpButton.style.cursor =
+                "not-allowed";
+
             otpButton.textContent =
                 "Fetching OTP...";
 
@@ -1080,30 +729,20 @@ function appendOtpButton(container) {
                 "VaultX: Get Latest OTP button clicked."
             );
 
-            /*
-             * Confirm OTP fields before fetching.
-             */
-
-            const fieldsBeforeFetch =
-                await waitForOtpFields();
-
-            if (
-                fieldsBeforeFetch.length < 6
-            ) {
-                console.warn(
-                    "VaultX: OTP fields are not ready.",
-                    fieldsBeforeFetch.length
-                );
-            }
-
             chrome.runtime.sendMessage(
                 {
                     type:
                         "VAULTX_GET_LATEST_OTP"
                 },
                 async (response) => {
-                    otpCheckInProgress = false;
-                    otpButton.disabled = false;
+                    otpCheckInProgress =
+                        false;
+
+                    otpButton.disabled =
+                        false;
+
+                    otpButton.style.cursor =
+                        "pointer";
 
                     if (
                         chrome.runtime.lastError
@@ -1118,14 +757,14 @@ function appendOtpButton(container) {
 
                         resetOtpButtonText(
                             otpButton,
-                            2200
+                            2500
                         );
 
                         return;
                     }
 
                     console.log(
-                        "VaultX: Background OTP response:",
+                        "VaultX OTP response:",
                         response
                     );
 
@@ -1141,7 +780,7 @@ function appendOtpButton(container) {
 
                         resetOtpButtonText(
                             otpButton,
-                            2500
+                            3000
                         );
 
                         return;
@@ -1155,19 +794,16 @@ function appendOtpButton(container) {
 
                         resetOtpButtonText(
                             otpButton,
-                            2000
+                            2500
                         );
 
                         return;
                     }
 
                     /*
-                     * Fill directly from response also.
-                     * This makes content.js independent
-                     * of whether background.js sends
-                     * a second VAULTX_FILL_OTP message.
+                     * Wait because some websites render
+                     * OTP inputs after opening the modal.
                      */
-
                     const otpFields =
                         await waitForOtpFields(
                             15,
@@ -1175,36 +811,39 @@ function appendOtpButton(container) {
                         );
 
                     if (
-                        otpFields.length < 6
+                        otpFields.length === 0
                     ) {
                         otpButton.textContent =
                             "❌ OTP fields not found";
 
-                        console.error(
-                            "VaultX: OTP fields unavailable after fetch.",
-                            otpFields.length
-                        );
-
                         resetOtpButtonText(
                             otpButton,
-                            2500
+                            3000
                         );
 
                         return;
                     }
 
+                    /*
+                     * Background.js also sends the OTP
+                     * through VAULTX_FILL_OTP.
+                     *
+                     * This direct fill is kept as a fallback.
+                     */
                     const filled =
                         fillOtp(
                             response.otp
                         );
 
-                    if (!filled) {
+                    if (
+                        !filled
+                    ) {
                         otpButton.textContent =
                             "❌ OTP filling failed";
 
                         resetOtpButtonText(
                             otpButton,
-                            2500
+                            3000
                         );
 
                         return;
@@ -1218,11 +857,15 @@ function appendOtpButton(container) {
 
                     setTimeout(
                         () => {
-                            otpButton.textContent =
-                                "Get Latest OTP";
+                            if (
+                                otpButton
+                            ) {
+                                otpButton.textContent =
+                                    "Get Latest OTP";
 
-                            otpButton.style.background =
-                                "#2563eb";
+                                otpButton.style.background =
+                                    "#2563eb";
+                            }
                         },
                         2000
                     );
@@ -1249,14 +892,23 @@ function appendOtpButton(container) {
    RESET OTP BUTTON
    ========================================================= */
 
-function resetOtpButtonText(button, delay) {
+function resetOtpButtonText(
+    button,
+    delay
+) {
     setTimeout(
         () => {
-            if (!button) {
+            if (
+                !button
+            ) {
                 return;
             }
 
-            button.disabled = false;
+            button.disabled =
+                false;
+
+            button.style.cursor =
+                "pointer";
 
             button.textContent =
                 "Get Latest OTP";
@@ -1273,12 +925,27 @@ function resetOtpButtonText(button, delay) {
    SHOW VAULTX CREDENTIAL MATCHES
    ========================================================= */
 
-function showVaultXMatches(credentials) {
+function showVaultXMatches(
+    credentials
+) {
+    const loginFields =
+        detectLoginFields();
+
+    const isLoginPage =
+        loginFields.usernameFields > 0 &&
+        loginFields.passwordFields > 0;
+
     if (
-        !credentials ||
+        !isLoginPage ||
+        !Array.isArray(credentials) ||
         credentials.length === 0
     ) {
-        showOtpButtonIfNeeded();
+        if (isLoginPage) {
+            showOtpButtonIfNeeded();
+        } else {
+            removeVaultXUI();
+        }
+
         return;
     }
 
@@ -1293,7 +960,11 @@ function showVaultXMatches(credentials) {
         document.createElement("div");
 
     accountCount.textContent =
-        `${credentials.length} account${credentials.length > 1 ? "s" : ""}`;
+        `${credentials.length} account${
+            credentials.length > 1
+                ? "s"
+                : ""
+        }`;
 
     Object.assign(
         accountCount.style,
@@ -1320,6 +991,9 @@ function showVaultXMatches(credentials) {
         }
     );
 
+    currentCredentials =
+        credentials;
+
     credentials.forEach(
         (credential) => {
             const accountButton =
@@ -1334,14 +1008,57 @@ function showVaultXMatches(credentials) {
                     width: "100%",
                     textAlign: "left",
                     border: "none",
-                    borderLeft:
-                        "3px solid transparent",
+                    borderLeft: "3px solid transparent",
                     borderRadius: "6px",
                     background: "#242424",
                     color: "#ffffff",
                     padding: "10px",
                     cursor: "pointer",
-                    fontFamily: "inherit"
+                    fontFamily: "inherit",
+                    transition: "background 0.2s"
+                }
+            );
+
+            const accountRow =
+                document.createElement("div");
+
+            Object.assign(
+                accountRow.style,
+                {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "9px"
+                }
+            );
+
+            const icon =
+                document.createElement("div");
+
+            icon.textContent =
+                "●";
+
+            Object.assign(
+                icon.style,
+                {
+                    width: "18px",
+                    minWidth: "18px",
+                    height: "18px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "10px",
+                    color: "#ffffff"
+                }
+            );
+
+            const textContainer =
+                document.createElement("div");
+
+            Object.assign(
+                textContainer.style,
+                {
+                    minWidth: "0",
+                    flex: "1"
                 }
             );
 
@@ -1358,34 +1075,46 @@ function showVaultXMatches(credentials) {
                 {
                     fontSize: "13px",
                     fontWeight: "600",
-                    whiteSpace: "nowrap",
                     overflow: "hidden",
+                    whiteSpace: "nowrap",
                     textOverflow: "ellipsis"
                 }
             );
 
-            const password =
+            const maskedPassword =
                 document.createElement("div");
 
-            password.textContent =
+            maskedPassword.textContent =
                 "••••••••••••••";
 
             Object.assign(
-                password.style,
+                maskedPassword.style,
                 {
                     fontSize: "11px",
                     color: "#d4d4d4",
                     letterSpacing: "1px",
-                    marginTop: "3px"
+                    marginTop: "2px"
                 }
             );
 
-            accountButton.appendChild(
+            textContainer.appendChild(
                 username
             );
 
+            textContainer.appendChild(
+                maskedPassword
+            );
+
+            accountRow.appendChild(
+                icon
+            );
+
+            accountRow.appendChild(
+                textContainer
+            );
+
             accountButton.appendChild(
-                password
+                accountRow
             );
 
             accountButton.addEventListener(
@@ -1431,11 +1160,20 @@ function showVaultXMatches(credentials) {
         list
     );
 
-    document.body.appendChild(
-        container
-    );
+    /*
+     * Important:
+     * Add Gmail OTP only when OTP fields
+     * are present on the current webpage.
+     */
+    if (
+        detectOtpFields().length > 0
+    ) {
+        appendOtpButton(
+            container
+        );
+    }
 
-    appendOtpButton(
+    document.body.appendChild(
         container
     );
 
@@ -1458,10 +1196,6 @@ function fillSelectedCredential(
     if (
         !credential?.id
     ) {
-        console.warn(
-            "VaultX: Credential ID missing."
-        );
-
         return;
     }
 
@@ -1472,15 +1206,19 @@ function fillSelectedCredential(
 
     buttons.forEach(
         (item) => {
-            item.disabled = true;
-            item.style.opacity = "0.6";
-            item.style.cursor = "default";
+            item.disabled =
+                true;
+
+            item.style.opacity =
+                "0.65";
+
+            item.style.cursor =
+                "wait";
         }
     );
 
-    button.style.opacity = "1";
-    button.style.background = "#303030";
-    button.textContent = "🔐 Filling...";
+    button.textContent =
+        "Verifying PIN...";
 
     chrome.runtime.sendMessage(
         {
@@ -1494,6 +1232,19 @@ function fillSelectedCredential(
                 credential.username || ""
         },
         (response) => {
+            buttons.forEach(
+                (item) => {
+                    item.disabled =
+                        false;
+
+                    item.style.opacity =
+                        "1";
+
+                    item.style.cursor =
+                        "pointer";
+                }
+            );
+
             if (
                 chrome.runtime.lastError
             ) {
@@ -1503,11 +1254,8 @@ function fillSelectedCredential(
                 );
 
                 button.textContent =
-                    "❌ Autofill failed";
-
-                resetAccountButtons(
-                    buttons
-                );
+                    credential.username ||
+                    "Saved account";
 
                 return;
             }
@@ -1521,34 +1269,26 @@ function fillSelectedCredential(
                 );
 
                 button.textContent =
-                    "❌ Autofill failed";
-
-                setTimeout(
-                    () => {
-                        resetAccountButtons(
-                            buttons
-                        );
-                    },
-                    1800
-                );
+                    credential.username ||
+                    "Saved account";
 
                 return;
             }
 
             button.textContent =
-                "✓ Filled successfully";
-
-            button.style.background =
-                "#166534";
-
-            button.style.borderLeftColor =
-                "#22c55e";
+                "✓ Filled";
 
             setTimeout(
                 () => {
-                    removeVaultXUI();
+                    if (
+                        button
+                    ) {
+                        button.textContent =
+                            credential.username ||
+                            "Saved account";
+                    }
                 },
-                1200
+                1800
             );
         }
     );
@@ -1556,32 +1296,289 @@ function fillSelectedCredential(
 
 
 /* =========================================================
-   RESET ACCOUNT BUTTONS
+   FILL CREDENTIAL INTO WEBSITE
    ========================================================= */
 
-function resetAccountButtons(buttons) {
-    buttons.forEach(
-        (button, index) => {
-            button.disabled = false;
-            button.style.opacity = "1";
-            button.style.cursor = "pointer";
-            button.style.background = "#242424";
-            button.style.borderLeftColor =
-                "transparent";
+function fillCredential(
+    username,
+    password
+) {
+    const loginFields =
+        detectLoginFields();
 
-            const credential =
-                currentCredentials[index];
+    const inputs =
+        Array.from(
+            document.querySelectorAll("input")
+        );
 
-            if (!credential) {
+    const usernameInput =
+        inputs.find((input) => {
+            const type =
+                (input.type || "").toLowerCase();
+
+            const name =
+                (input.name || "").toLowerCase();
+
+            const id =
+                (input.id || "").toLowerCase();
+
+            const autocomplete =
+                (input.autocomplete || "").toLowerCase();
+
+            const placeholder =
+                (input.placeholder || "").toLowerCase();
+
+            return (
+                type === "email" ||
+                autocomplete === "username" ||
+                name.includes("user") ||
+                name.includes("email") ||
+                id.includes("user") ||
+                id.includes("email") ||
+                id.includes("login") ||
+                placeholder.includes("email") ||
+                placeholder.includes("username")
+            );
+        });
+
+    const passwordInput =
+        inputs.find(
+            (input) =>
+                (input.type || "").toLowerCase() ===
+                "password"
+        );
+
+    let filled =
+        false;
+
+    if (
+        usernameInput &&
+        typeof username === "string"
+    ) {
+        setNativeInputValue(
+            usernameInput,
+            username
+        );
+
+        filled =
+            true;
+    }
+
+    if (
+        passwordInput &&
+        typeof password === "string"
+    ) {
+        setNativeInputValue(
+            passwordInput,
+            password
+        );
+
+        filled =
+            true;
+    }
+
+    console.log(
+        "VaultX credential fill result:",
+        {
+            usernameFound: Boolean(usernameInput),
+            passwordFound: Boolean(passwordInput),
+            loginFields
+        }
+    );
+
+    return filled;
+}
+
+
+/* =========================================================
+   NATIVE INPUT VALUE SETTER
+   ========================================================= */
+
+function setNativeInputValue(
+    input,
+    value
+) {
+    const prototype =
+        Object.getPrototypeOf(input);
+
+    const valueSetter =
+        Object.getOwnPropertyDescriptor(
+            prototype,
+            "value"
+        )?.set;
+
+    if (
+        valueSetter
+    ) {
+        valueSetter.call(
+            input,
+            value
+        );
+    } else {
+        input.value =
+            value;
+    }
+
+    input.dispatchEvent(
+        new Event(
+            "input",
+            {
+                bubbles: true
+            }
+        )
+    );
+
+    input.dispatchEvent(
+        new Event(
+            "change",
+            {
+                bubbles: true
+            }
+        )
+    );
+
+    input.dispatchEvent(
+        new Event(
+            "blur",
+            {
+                bubbles: true
+            }
+        )
+    );
+}
+
+
+/* =========================================================
+   FILL OTP
+   ========================================================= */
+
+function fillOtp(
+    otp
+) {
+    if (
+        otp === null ||
+        otp === undefined
+    ) {
+        return false;
+    }
+
+    const cleanOtp =
+        String(otp).replace(
+            /\D/g,
+            ""
+        );
+
+    if (
+        cleanOtp.length === 0
+    ) {
+        return false;
+    }
+
+    const otpFields =
+        detectOtpFields();
+
+    if (
+        otpFields.length === 0
+    ) {
+        console.warn(
+            "VaultX: OTP fields not found."
+        );
+
+        return false;
+    }
+
+    /*
+     * Case 1:
+     * One OTP input box accepting complete OTP.
+     */
+    if (
+        otpFields.length === 1
+    ) {
+        const input =
+            otpFields[0];
+
+        const maxLength =
+            Number(input.maxLength);
+
+        if (
+            maxLength !== 1
+        ) {
+            setNativeInputValue(
+                input,
+                cleanOtp
+            );
+
+            return true;
+        }
+    }
+
+    /*
+     * Case 2:
+     * Multiple separate OTP boxes.
+     */
+    const digits =
+        cleanOtp.split("");
+
+    let filledCount =
+        0;
+
+    otpFields.forEach(
+        (input, index) => {
+            if (
+                index >= digits.length
+            ) {
                 return;
             }
 
-            button.textContent =
-                credential.username ||
-                credential.title ||
-                "Saved account";
+            setNativeInputValue(
+                input,
+                digits[index]
+            );
+
+            filledCount++;
         }
     );
+
+    /*
+     * Some websites automatically move focus
+     * to the next input after each digit.
+     */
+    if (
+        filledCount > 0
+    ) {
+        const lastField =
+            otpFields[
+                Math.min(
+                    filledCount - 1,
+                    otpFields.length - 1
+                )
+            ];
+
+        if (
+            lastField
+        ) {
+            lastField.dispatchEvent(
+                new Event(
+                    "change",
+                    {
+                        bubbles: true
+                    }
+                )
+            );
+        }
+    }
+
+    console.log(
+        "VaultX OTP filled:",
+        {
+            totalFields:
+                otpFields.length,
+
+            filledCount
+        }
+    );
+
+    return filledCount > 0;
 }
 
 
@@ -1590,15 +1587,20 @@ function resetAccountButtons(buttons) {
    ========================================================= */
 
 function requestCredentialCheck() {
-    if (checkInProgress) {
+    if (
+        checkInProgress
+    ) {
         return;
     }
 
-    if (!document.body) {
+    if (
+        !document.body
+    ) {
         return;
     }
 
-    checkInProgress = true;
+    checkInProgress =
+        true;
 
     chrome.runtime.sendMessage(
         {
@@ -1606,7 +1608,8 @@ function requestCredentialCheck() {
                 "VAULTX_CHECK_PAGE"
         },
         (response) => {
-            checkInProgress = false;
+            checkInProgress =
+                false;
 
             if (
                 chrome.runtime.lastError
@@ -1624,18 +1627,46 @@ function requestCredentialCheck() {
                 response
             );
 
+            const credentials =
+                Array.isArray(
+                    response?.credentials
+                )
+                    ? response.credentials
+                    : [];
+
+            const otpFields =
+                detectOtpFields();
+
+            /*
+             * Saved credentials found.
+             * OTP section will be added only if
+             * OTP fields are also present.
+             */
             if (
-                response?.credentials &&
-                response.credentials.length > 0
+                credentials.length > 0
             ) {
                 showVaultXMatches(
-                    response.credentials
+                    credentials
                 );
 
                 return;
             }
 
-            showOtpButtonIfNeeded();
+            /*
+             * No credentials, but OTP fields exist.
+             */
+            if (
+                otpFields.length > 0
+            ) {
+                showOtpButtonIfNeeded();
+
+                return;
+            }
+
+            /*
+             * No login credentials and no OTP.
+             */
+            removeVaultXUI();
         }
     );
 }
@@ -1646,13 +1677,28 @@ function requestCredentialCheck() {
    ========================================================= */
 
 function watchDynamicLoginForms() {
-    if (!document.documentElement) {
+    if (
+        !document.documentElement
+    ) {
         return;
     }
 
     const observer =
         new MutationObserver(
-            () => {
+            (mutations) => {
+                const pageMutated =
+                    mutations.some(
+                        (mutation) => {
+                            return !isVaultXElement(
+                                mutation.target
+                            );
+                        }
+                    );
+
+                if (!pageMutated) {
+                    return;
+                }
+
                 clearTimeout(
                     window.__vaultxCheckTimer
                 );
@@ -1666,12 +1712,19 @@ function watchDynamicLoginForms() {
                             const otpFields =
                                 detectOtpFields();
 
+                            /*
+                             * Recheck when:
+                             * - Login fields appear
+                             * - OTP fields appear
+                             * - OTP modal opens
+                             */
                             if (
                                 (
                                     loginFields.usernameFields > 0 &&
                                     loginFields.passwordFields > 0
                                 ) ||
-                                otpFields.length > 0
+                                otpFields.length > 0 ||
+                                getOtpModalContainers().length > 0
                             ) {
                                 requestCredentialCheck();
                             }
@@ -1705,7 +1758,152 @@ function watchDynamicLoginForms() {
 
 
 /* =========================================================
-   INITIALIZE
+   WATCH LOGOUT ACTIONS
+   ========================================================= */
+
+function watchLogoutActions() {
+    document.addEventListener(
+        "click",
+        (event) => {
+            const target =
+                event.target instanceof Element
+                    ? event.target.closest(
+                        "button, a, [role='button']"
+                    )
+                    : null;
+
+            if (!target || isVaultXElement(target)) {
+                return;
+            }
+
+            const actionText = (
+                target.textContent ||
+                target.getAttribute("aria-label") ||
+                target.getAttribute("title") ||
+                target.getAttribute("href") ||
+                ""
+            ).toLowerCase();
+
+            if (
+                !/(log\s*out|sign\s*out|logout|signout)/i.test(
+                    actionText
+                )
+            ) {
+                return;
+            }
+
+            clearTimeout(
+                window.__vaultxLogoutCheckTimer
+            );
+
+            window.__vaultxLogoutCheckTimer =
+                setTimeout(
+                    () => {
+                        removeVaultXUI();
+                        requestCredentialCheck();
+                    },
+                    800
+                );
+        },
+        true
+    );
+}
+
+
+/* =========================================================
+   WATCH SPA NAVIGATION
+   ========================================================= */
+
+function watchSpaNavigation() {
+    const originalPushState =
+        history.pushState;
+
+    const originalReplaceState =
+        history.replaceState;
+
+    history.pushState =
+        function (...args) {
+            originalPushState.apply(
+                history,
+                args
+            );
+
+            handleUrlChange();
+        };
+
+    history.replaceState =
+        function (...args) {
+            originalReplaceState.apply(
+                history,
+                args
+            );
+
+            handleUrlChange();
+        };
+
+    window.addEventListener(
+        "popstate",
+        handleUrlChange
+    );
+
+    window.addEventListener(
+        "hashchange",
+        handleUrlChange
+    );
+
+    setInterval(
+        () => {
+            if (
+                window.location.href !==
+                lastCheckedUrl
+            ) {
+                handleUrlChange();
+            }
+        },
+        1000
+    );
+}
+
+
+/* =========================================================
+   HANDLE URL CHANGE
+   ========================================================= */
+
+function handleUrlChange() {
+    const newUrl =
+        window.location.href;
+
+    if (
+        newUrl ===
+        lastCheckedUrl
+    ) {
+        return;
+    }
+
+    lastCheckedUrl =
+        newUrl;
+
+    currentCredentials =
+        [];
+
+    removeVaultXUI();
+
+    console.log(
+        "VaultX detected navigation:",
+        newUrl
+    );
+
+    setTimeout(
+        () => {
+            requestCredentialCheck();
+        },
+        700
+    );
+}
+
+
+/* =========================================================
+   INITIALIZE VAULTX
    ========================================================= */
 
 function initializeVaultX() {
@@ -1717,6 +1915,10 @@ function initializeVaultX() {
     requestCredentialCheck();
 
     watchDynamicLoginForms();
+
+    watchLogoutActions();
+
+    watchSpaNavigation();
 }
 
 
@@ -1725,7 +1927,8 @@ function initializeVaultX() {
    ========================================================= */
 
 if (
-    document.readyState === "loading"
+    document.readyState ===
+    "loading"
 ) {
     document.addEventListener(
         "DOMContentLoaded",
