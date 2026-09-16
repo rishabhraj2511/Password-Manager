@@ -1,6 +1,7 @@
 import {
     createContext,
     useContext,
+    useCallback,
     useEffect,
     useState,
     type ReactNode
@@ -60,7 +61,7 @@ export function AuthProvider({
     const [session2FARequired, setSession2FARequired] =
         useState(false);
 
-    const clearSession = async () => {
+    const clearSession = useCallback(async () => {
         await chrome.storage.local.remove([
             "token",
             "refresh_token"
@@ -68,9 +69,9 @@ export function AuthProvider({
 
         setToken(null);
         setSession2FARequired(false);
-    };
+    }, []);
 
-    const saveSession = async (
+    const saveSession = useCallback(async (
         accessToken: string,
         refreshToken: string
     ) => {
@@ -81,9 +82,9 @@ export function AuthProvider({
 
         setToken(accessToken);
         setSession2FARequired(false);
-    };
+    }, []);
 
-    const refreshSession = async (
+    const refreshSession = useCallback(async (
         refreshToken: string,
         otp?: string
     ): Promise<boolean> => {
@@ -132,7 +133,7 @@ export function AuthProvider({
             await clearSession();
             return false;
         }
-    };
+    }, [clearSession, saveSession]);
 
     useEffect(() => {
         const restoreSession = async () => {
@@ -194,9 +195,9 @@ export function AuthProvider({
         };
 
         restoreSession();
-    }, []);
+    }, [clearSession, refreshSession]);
 
-    const login = async (
+    const login = useCallback(async (
         accessToken: string,
         refreshToken: string
     ) => {
@@ -208,9 +209,9 @@ export function AuthProvider({
             accessToken,
             refreshToken
         );
-    };
+    }, [saveSession]);
 
-    const verifySession2FA = async (
+    const verifySession2FA = useCallback(async (
         otp: string
     ): Promise<boolean> => {
         const result =
@@ -232,11 +233,11 @@ export function AuthProvider({
             refreshToken,
             otp
         );
-    };
+    }, [clearSession, refreshSession]);
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         await clearSession();
-    };
+    }, [clearSession]);
 
     return (
         <AuthContext.Provider

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../Services/api";
 import { useAuth } from "../Context/AuthContext";
 import VaultForm from "../Components/VaultForm";
@@ -420,10 +420,10 @@ function Dashboard() {
             }
         };
 
-    const fetchData = async (
-        nextSearch = search,
-        nextVaultFilter = credentialVaultFilter,
-        nextVaultSearch = vaultSearch
+    const fetchData = useCallback(async (
+        nextSearch: string,
+        nextVaultFilter: string,
+        nextVaultSearch: string
     ) => {
         try {
             const credentialParams =
@@ -494,11 +494,11 @@ function Dashboard() {
                 error
             );
         }
-    };
+    }, []);
 
     useEffect(() => {
-        fetchData();
-    }, []);
+        fetchData("", "", "");
+    }, [fetchData]);
 
     const credentialGroups =
         useMemo(() => {
@@ -602,7 +602,7 @@ function Dashboard() {
             setEditingVault(null);
             setVaultName("");
 
-            await fetchData();
+            await fetchData(search, credentialVaultFilter, vaultSearch);
         } catch (error: any) {
             setVaultMessage(
                 error.response?.data
@@ -648,7 +648,7 @@ function Dashboard() {
                 `/vaults/${vaultId}`
             );
 
-            await fetchData();
+            await fetchData(search, credentialVaultFilter, vaultSearch);
         } catch (error: any) {
             console.error(
                 "Failed to delete vault",
@@ -677,7 +677,7 @@ function Dashboard() {
                 setCredentials(
                     response.data.items
                 );
-            } catch (error) {
+            } catch {
                 console.error(
                     "Failed to clear credential filters"
                 );
@@ -1361,7 +1361,7 @@ function Dashboard() {
                         />
 
                         <button
-                            onClick={() => fetchData()}
+                            onClick={() => fetchData(search, credentialVaultFilter, vaultSearch)}
                         >
                             Search
                         </button>
@@ -1369,7 +1369,7 @@ function Dashboard() {
                     </div>
 
                     <div className="inline-form-hidden">
-                        <VaultForm onCreated={fetchData} />
+                        <VaultForm onCreated={() => fetchData(search, credentialVaultFilter, vaultSearch)} />
                     </div>
 
                     <div className="vault-list">
@@ -1634,7 +1634,7 @@ function Dashboard() {
                         </select>
 
                         <button
-                            onClick={() => fetchData()}
+                            onClick={() => fetchData(search, credentialVaultFilter, vaultSearch)}
                         >
                             Search
                         </button>
@@ -1764,7 +1764,7 @@ function Dashboard() {
                                                             credential
                                                         }
                                                         onDeleted={
-                                                            fetchData
+                                                            () => fetchData(search, credentialVaultFilter, vaultSearch)
                                                         }
                                                     />
                                                 )
@@ -1795,9 +1795,9 @@ function Dashboard() {
                 <div className="modal-backdrop" role="presentation" onMouseDown={() => setModal(null)}>
                     <div className="modal-card" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
                         <button className="modal-close" type="button" aria-label="Close" onClick={() => setModal(null)}>×</button>
-                        {modal === "vault" && <VaultForm onCreated={() => { setModal(null); fetchData(); }} />}
+                        {modal === "vault" && <VaultForm onCreated={() => { setModal(null); fetchData(search, credentialVaultFilter, vaultSearch); }} />}
                         {modal === "credential" && activeCredentialVault !== null && (
-                            <CredentialForm vaultId={activeCredentialVault} onCreated={() => { setModal(null); fetchData(); }} />
+                            <CredentialForm vaultId={activeCredentialVault} onCreated={() => { setModal(null); fetchData(search, credentialVaultFilter, vaultSearch); }} />
                         )}
                     </div>
                 </div>
