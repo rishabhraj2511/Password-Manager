@@ -283,14 +283,25 @@ function CredentialItem({
         <>
             {editing ? (
                 <div
-                    className="credential-card"
-                    style={{
-                        marginBottom: "12px"
-                    }}
+                    className="modal-backdrop credential-edit-modal"
                 >
-                    <div className="edit-header">
-                        <h3>Edit Account</h3>
-                    </div>
+                    <div className="credential-card modal-card">
+                        <button
+                            className="modal-close"
+                            type="button"
+                            aria-label="Close edit form"
+                            onClick={() => {
+                                setEditing(false);
+                                setPassword("");
+                            }}
+                            disabled={loading}
+                        >
+                            ×
+                        </button>
+
+                        <div className="edit-header">
+                            <h3>Edit Account</h3>
+                        </div>
 
                     <div className="edit-form">
                         <input
@@ -388,6 +399,7 @@ function CredentialItem({
                                 Cancel
                             </button>
                         </div>
+                    </div>
                     </div>
                 </div>
             ) : (

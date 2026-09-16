@@ -46,8 +46,44 @@ function getWebsiteLabel(
     return credential.title || "Other";
 }
 
+type DashboardView = "dashboard" | "vaults" | "credentials" | "security" | "settings";
+
 function Dashboard() {
     const { logout } = useAuth();
+
+    const [activeView, setActiveView] =
+        useState<DashboardView>("dashboard");
+
+    const [modal, setModal] = useState<
+        "vault" | "credential" | "reuse" | null
+    >(null);
+
+    const [activeCredentialVault, setActiveCredentialVault] =
+        useState<number | null>(null);
+
+    const [expandedSetting, setExpandedSetting] =
+        useState<"college" | "autofill" | "pin" | "account" | null>(null);
+
+    const [reuseDetailsOpen, setReuseDetailsOpen] =
+        useState(false);
+
+    useEffect(() => {
+        if (!modal) {
+            return;
+        }
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setModal(null);
+            }
+        };
+
+        window.addEventListener("keydown", handleEscape);
+
+        return () => {
+            window.removeEventListener("keydown", handleEscape);
+        };
+    }, [modal]);
 
     const [health, setHealth] =
         useState<any>(null);
@@ -384,22 +420,26 @@ function Dashboard() {
             }
         };
 
-    const fetchData = async () => {
+    const fetchData = async (
+        nextSearch = search,
+        nextVaultFilter = credentialVaultFilter,
+        nextVaultSearch = vaultSearch
+    ) => {
         try {
             const credentialParams =
                 new URLSearchParams();
 
-            if (search.trim()) {
+            if (nextSearch.trim()) {
                 credentialParams.append(
                     "search",
-                    search.trim()
+                    nextSearch.trim()
                 );
             }
 
-            if (credentialVaultFilter) {
+            if (nextVaultFilter) {
                 credentialParams.append(
                     "vault_id",
-                    credentialVaultFilter
+                    nextVaultFilter
                 );
             }
 
@@ -422,7 +462,7 @@ function Dashboard() {
 
                 api.get(
                     `/vaults/?search=${encodeURIComponent(
-                        vaultSearch
+                        nextVaultSearch
                     )}`
                 ),
 
@@ -644,22 +684,54 @@ function Dashboard() {
             }
         };
 
+    const openVault = (vault: any) => {
+        if (vault.credential_count > 0) {
+            setCredentialVaultFilter(String(vault.id));
+            setActiveView("credentials");
+            fetchData("", String(vault.id), vaultSearch);
+            return;
+        }
+
+        setActiveView("vaults");
+        setVaultMessage("This vault has no credentials yet. Add one below.");
+    };
+
     return (
         <div className="dashboard">
 
             <nav className="navbar">
 
-                <h2>
-                    VaultX
-                </h2>
+                <div className="brand-lockup">
+                    <span className="brand-mark">V</span>
+                    <div>
+                        <h2>VaultX</h2>
+                        <small>Personal vault</small>
+                    </div>
+                </div>
 
                 <div>
 
-                    <span>
-                        Dashboard
-                    </span>
+                    <div className="view-tabs" role="tablist" aria-label="Vault navigation">
+                        {([
+                            ["dashboard", "Overview"],
+                            ["vaults", "Vaults"],
+                            ["credentials", "Credentials"],
+                            ["security", "Security"],
+                            ["settings", "Settings"]
+                        ] as [DashboardView, string][]).map(([view, label]) => (
+                            <button
+                                key={view}
+                                className={activeView === view ? "active" : ""}
+                                onClick={() => setActiveView(view)}
+                                type="button"
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
 
                     <button
+                        className="logout-button"
                         onClick={
                             handleLogout
                         }
@@ -667,11 +739,7 @@ function Dashboard() {
                             logoutLoading
                         }
                     >
-                        {
-                            logoutLoading
-                                ? "Logging out..."
-                                : "Logout"
-                        }
+                        {logoutLoading ? "..." : "Log out"}
                     </button>
 
                 </div>
@@ -684,22 +752,27 @@ function Dashboard() {
 
                     <div>
 
-                        <h1>
-                            Dashboard
-                        </h1>
+                        <div>
+                            <span className="eyebrow">SECURE SPACE</span>
+                            <h1>{activeView === "dashboard" ? "Dashboard" : activeView[0].toUpperCase() + activeView.slice(1)}</h1>
+                        </div>
 
                         <p>
-                            Manage your passwords
-                            securely.
+                            Everything important, protected in one place.
                         </p>
 
                     </div>
 
                 </div>
 
+                {activeView === "dashboard" && (
                 <section className="overview">
 
-                    <div className="card">
+                    <button
+                        className="card summary-card"
+                        type="button"
+                        onClick={() => setActiveView("vaults")}
+                    >
 
                         <span>
                             Total Vaults
@@ -709,9 +782,13 @@ function Dashboard() {
                             {vaults.length}
                         </strong>
 
-                    </div>
+                    </button>
 
-                    <div className="card">
+                    <button
+                        className="card summary-card"
+                        type="button"
+                        onClick={() => setActiveView("credentials")}
+                    >
 
                         <span>
                             Total Credentials
@@ -721,9 +798,13 @@ function Dashboard() {
                             {credentials.length}
                         </strong>
 
-                    </div>
+                    </button>
 
-                    <div className="card">
+                    <button
+                        className="card summary-card"
+                        type="button"
+                        onClick={() => setActiveView("security")}
+                    >
 
                         <span>
                             Security Score
@@ -735,15 +816,17 @@ function Dashboard() {
                                 : 0}
                         </strong>
 
-                    </div>
+                    </button>
 
                 </section>
+                )}
 
-                <section className="security-section">
+                <section className={`security-section settings-section ${activeView === "settings" ? "" : "view-hidden"} ${expandedSetting === "college" ? "is-expanded" : ""}`}>
 
-                    <h2>
+                    <button className="setting-heading" type="button" onClick={() => setExpandedSetting(expandedSetting === "college" ? null : "college")}>
                         College Assistant 🎓
-                    </h2>
+                        <span>{expandedSetting === "college" ? "−" : "+"}</span>
+                    </button>
 
                     <div className="security-alert">
 
@@ -816,11 +899,12 @@ function Dashboard() {
 
                 </section>
 
-                <section className="security-section">
+                <section className={`security-section settings-section ${activeView === "settings" ? "" : "view-hidden"} ${expandedSetting === "autofill" ? "is-expanded" : ""}`}>
 
-                    <h2>
+                    <button className="setting-heading" type="button" onClick={() => setExpandedSetting(expandedSetting === "autofill" ? null : "autofill")}>
                         Autofill Preferences
-                    </h2>
+                        <span>{expandedSetting === "autofill" ? "−" : "+"}</span>
+                    </button>
 
                     <div
                         className="security-alert"
@@ -870,11 +954,12 @@ function Dashboard() {
 
                 </section>
 
-                <section className="security-section">
+                <section className={`security-section settings-section ${activeView === "settings" ? "" : "view-hidden"} ${expandedSetting === "pin" ? "is-expanded" : ""}`}>
 
-                    <h2>
+                    <button className="setting-heading" type="button" onClick={() => setExpandedSetting(expandedSetting === "pin" ? null : "pin")}>
                         Password View Security
-                    </h2>
+                        <span>{expandedSetting === "pin" ? "−" : "+"}</span>
+                    </button>
 
                     <div className="security-alert">
                         <strong>Password View PIN</strong>
@@ -1010,11 +1095,12 @@ function Dashboard() {
 
                 </section>
 
-                <section className="security-section">
+                <section className={`security-section settings-section ${activeView === "settings" ? "" : "view-hidden"} ${expandedSetting === "account" ? "is-expanded" : ""}`}>
 
-                    <h2>
+                    <button className="setting-heading" type="button" onClick={() => setExpandedSetting(expandedSetting === "account" ? null : "account")}>
                         Account Settings
-                    </h2>
+                        <span>{expandedSetting === "account" ? "−" : "+"}</span>
+                    </button>
 
                     <div className="security-alert">
 
@@ -1034,7 +1120,7 @@ function Dashboard() {
 
                 </section>
 
-                <section className="security-section">
+                <section className={`security-section security-view ${activeView === "security" ? "" : "view-hidden"}`}>
 
                     <h2>
                         Password Security
@@ -1145,7 +1231,7 @@ function Dashboard() {
 
                 </section>
 
-                <section className="security-section">
+                <section className={`security-section security-view ${activeView === "security" ? "" : "view-hidden"}`}>
 
                     <h2>
                         Password Reuse
@@ -1199,51 +1285,39 @@ function Dashboard() {
                                                 detected
                                             </strong>
 
-                                            {
-                                                passwordReuse.groups.map(
-                                                    (
-                                                        group: any,
-                                                        index: number
-                                                    ) => (
-                                                        <div
-                                                            key={
-                                                                index
-                                                            }
-                                                            style={{
-                                                                marginTop:
-                                                                    "15px"
-                                                            }}
-                                                        >
+                                            <button
+                                                className="secondary-button reuse-details-button"
+                                                type="button"
+                                                onClick={() => setReuseDetailsOpen(!reuseDetailsOpen)}
+                                            >
+                                                {reuseDetailsOpen ? "Hide details" : "View details"}
+                                            </button>
 
-                                                            <p>
-                                                                Same
-                                                                password
-                                                                used in:
-                                                            </p>
+                                            {reuseDetailsOpen && passwordReuse.groups.map(
+                                                (
+                                                    group: any,
+                                                    index: number
+                                                ) => (
+                                                    <div
+                                                        key={index}
+                                                        style={{ marginTop: "10px" }}
+                                                    >
 
-                                                            {
-                                                                group.credentials.map(
-                                                                    (
-                                                                        credential: any
-                                                                    ) => (
-                                                                        <p
-                                                                            key={
-                                                                                credential.credential_id
-                                                                            }
-                                                                        >
-                                                                            •{" "}
-                                                                            {
-                                                                                credential.title
-                                                                            }
-                                                                        </p>
-                                                                    )
-                                                                )
-                                                            }
+                                                        <p>
+                                                            Same password used in:
+                                                        </p>
 
-                                                        </div>
-                                                    )
+                                                        {group.credentials.map(
+                                                            (credential: any) => (
+                                                                <p key={credential.credential_id}>
+                                                                    • {credential.title}
+                                                                </p>
+                                                            )
+                                                        )}
+
+                                                    </div>
                                                 )
-                                            }
+                                            )}
 
                                         </div>
                                     )
@@ -1254,13 +1328,20 @@ function Dashboard() {
 
                 </section>
 
-                <section className="vault-section">
+                <section className={`vault-section ${activeView === "vaults" ? "" : "view-hidden"}`}>
 
                     <div className="section-header">
 
                         <h2>
                             Vaults
                         </h2>
+
+                        <div className="section-actions">
+                            <span>{vaults.length} total</span>
+                            <button className="primary-button compact-button" type="button" onClick={() => setModal("vault")}>
+                            + Create Vault
+                            </button>
+                        </div>
 
                     </div>
 
@@ -1280,20 +1361,16 @@ function Dashboard() {
                         />
 
                         <button
-                            onClick={
-                                fetchData
-                            }
+                            onClick={() => fetchData()}
                         >
                             Search
                         </button>
 
                     </div>
 
-                    <VaultForm
-                        onCreated={
-                            fetchData
-                        }
-                    />
+                    <div className="inline-form-hidden">
+                        <VaultForm onCreated={fetchData} />
+                    </div>
 
                     <div className="vault-list">
 
@@ -1304,6 +1381,7 @@ function Dashboard() {
                                     key={
                                         vault.id
                                     }
+                                    onClick={() => openVault(vault)}
                                 >
 
                                     {
@@ -1405,23 +1483,22 @@ function Dashboard() {
 
                                                             <button
                                                                 className="edit-btn"
-                                                                onClick={() =>
-                                                                    startEditVault(
-                                                                        vault
-                                                                    )
-                                                                }
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    startEditVault(vault);
+                                                                }}
                                                             >
                                                                 Edit
                                                             </button>
 
                                                             <button
                                                                 className="delete-btn"
-                                                                onClick={() =>
-                                                                    deleteVault(
-                                                                        vault.id,
-                                                                        vault.name
-                                                                    )
-                                                                }
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    deleteVault(vault.id, vault.name);
+                                                                }}
                                                             >
                                                                 Delete
                                                             </button>
@@ -1447,14 +1524,17 @@ function Dashboard() {
                                                         )
                                                     }
 
-                                                    <CredentialForm
-                                                        vaultId={
-                                                            vault.id
-                                                        }
-                                                        onCreated={
-                                                            fetchData
-                                                        }
-                                                    />
+                                                    <button
+                                                        className="text-action"
+                                                        type="button"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            setActiveCredentialVault(vault.id);
+                                                            setModal("credential");
+                                                        }}
+                                                    >
+                                                        + Add credential
+                                                    </button>
 
                                                 </>
                                             )
@@ -1477,7 +1557,7 @@ function Dashboard() {
 
                 </section>
 
-                <section className="credentials-section">
+                <section className={`credentials-section ${activeView === "credentials" ? "" : "view-hidden"}`}>
 
                     <div className="section-header">
 
@@ -1491,6 +1571,18 @@ function Dashboard() {
                             }{" "}
                             saved
                         </span>
+
+                        <button className="primary-button compact-button" type="button" onClick={() => {
+                            const vault = vaults[0];
+                            if (vault) {
+                                setActiveCredentialVault(vault.id);
+                                setModal("credential");
+                            } else {
+                                setModal("vault");
+                            }
+                        }}>
+                            + Add Credential
+                        </button>
 
                     </div>
 
@@ -1542,9 +1634,7 @@ function Dashboard() {
                         </select>
 
                         <button
-                            onClick={
-                                fetchData
-                            }
+                            onClick={() => fetchData()}
                         >
                             Search
                         </button>
@@ -1700,6 +1790,18 @@ function Dashboard() {
                 </section>
 
             </main>
+
+            {modal && (
+                <div className="modal-backdrop" role="presentation" onMouseDown={() => setModal(null)}>
+                    <div className="modal-card" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+                        <button className="modal-close" type="button" aria-label="Close" onClick={() => setModal(null)}>×</button>
+                        {modal === "vault" && <VaultForm onCreated={() => { setModal(null); fetchData(); }} />}
+                        {modal === "credential" && activeCredentialVault !== null && (
+                            <CredentialForm vaultId={activeCredentialVault} onCreated={() => { setModal(null); fetchData(); }} />
+                        )}
+                    </div>
+                </div>
+            )}
 
         </div>
     );
