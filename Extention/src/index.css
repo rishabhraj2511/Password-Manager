@@ -1164,8 +1164,404 @@ form > button:hover,
     color: var(--text);
 }
 
+/* Reference dashboard polish */
+body {
+    overflow-x: hidden;
+}
+
+.dashboard {
+    min-width: 0;
+    background: linear-gradient(145deg, rgba(139, 92, 246, .06), transparent 30%), var(--bg);
+}
+
+.navbar {
+    border-color: #20283a;
+    background: rgba(10, 13, 20, .96);
+}
+
+.brand-lockup {
+    gap: 8px;
+}
+
+.brand-lockup h2 {
+    font-size: 15px;
+    line-height: 1.1;
+}
+
+.brand-lockup small {
+    font-size: 9px;
+    line-height: 1.2;
+}
+
+.view-tabs button {
+    min-height: 26px;
+    padding: 6px 8px;
+    font-size: 10px;
+}
+
+.dashboard-content {
+    max-width: 760px;
+    padding-top: 20px;
+}
+
+.dashboard-header {
+    margin-bottom: 14px;
+}
+
+.dashboard-header h1 {
+    margin-top: 4px;
+    font-size: 24px;
+    line-height: 1.1;
+    letter-spacing: 0;
+}
+
+.dashboard-header p {
+    margin-top: 6px;
+    font-size: 11px;
+}
+
+.eyebrow {
+    font-size: 8px;
+    letter-spacing: 1.5px;
+}
+
+.overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 9px;
+}
+
+.overview .card,
+.overview .card:last-child {
+    position: relative;
+    display: flex;
+    min-height: 78px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 12px;
+    text-align: left;
+}
+
+.overview .card:last-child {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.overview .card span:not(.stat-icon) {
+    margin-bottom: 4px;
+    font-size: 10px;
+}
+
+.overview .card strong {
+    font-size: 23px;
+    line-height: 1;
+}
+
+.stat-icon {
+    display: grid !important;
+    width: 22px;
+    height: 22px;
+    margin-bottom: 7px !important;
+    place-items: center;
+    border-radius: 6px;
+    background: rgba(139, 92, 246, .18);
+    color: #c4b5fd;
+    font-size: 12px !important;
+    font-weight: 700;
+}
+
+.overview .card:last-child .stat-icon {
+    margin-bottom: 0 !important;
+}
+
+.security-icon {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, .16);
+}
+
+.overview-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: rgba(21, 24, 33, .92);
+}
+
+.overview-actions-header h2 {
+    margin: 0 0 3px;
+    font-size: 12px;
+}
+
+.overview-actions button {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 7px;
+    min-height: 28px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(31, 38, 54, .8);
+    color: var(--text);
+    text-align: left;
+    font-size: 10px;
+}
+
+.overview-actions button:hover {
+    border-color: var(--accent);
+    background: rgba(139, 92, 246, .12);
+}
+
+.action-icon {
+    color: #c4b5fd;
+    font-size: 16px;
+    text-align: center;
+}
+
+.action-arrow {
+    color: var(--muted);
+    font-size: 16px;
+}
+
+.security-section,
+.vault-section,
+.credentials-section {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .14);
+}
+
+.section-header {
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.section-header h2,
+.security-section h2,
+.vault-section h2,
+.credentials-section h2 {
+    font-size: 15px;
+}
+
+.section-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.search-box {
+    flex-wrap: wrap;
+}
+
+.search-box input {
+    flex: 1 1 150px;
+}
+
+.search-box select {
+    flex: 1 1 100px;
+    min-width: 0;
+}
+
+.vault-card,
+.credential-group {
+    transition: border-color .15s ease, background .15s ease;
+}
+
+.vault-card:hover,
+.credential-group:hover {
+    border-color: rgba(139, 92, 246, .55);
+    background: #151b29;
+}
+
+.settings-section {
+    overflow: hidden;
+}
+
+.setting-heading {
+    min-height: 25px;
+    font-size: 14px;
+}
+
+.setting-heading span {
+    min-width: 16px;
+    text-align: center;
+}
+
+.autofill-section .setting-heading {
+    pointer-events: none;
+}
+
+.security-alert,
+.account-settings-content {
+    max-width: 100%;
+}
+
+.account-settings-content {
+    margin-top: 8px;
+}
+
+@media (max-width: 420px) {
+    .dashboard-content {
+        padding-inline: 9px;
+    }
+
+    .navbar {
+        padding-inline: 10px;
+    }
+
+    .view-tabs button {
+        padding-inline: 6px;
+        font-size: 9px;
+    }
+
+    .section-header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+    }
+
+    .section-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .search-box > button {
+        flex: 1 1 70px;
+    }
+}
+
 .search-box select:focus {
     border-color: var(--accent);
+}
+
+/* Compact list controls and settings rhythm */
+.vault-section .search-box,
+.credentials-section .search-box {
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.vault-section .search-box input,
+.credentials-section .search-box input,
+.credentials-section .search-box select {
+    min-height: 28px;
+    padding: 5px 8px;
+    font-size: 10px;
+}
+
+.vault-section .search-box button,
+.credentials-section .search-box button {
+    min-height: 28px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+}
+
+.settings-section {
+    margin-bottom: 13px;
+}
+
+.settings-section:last-of-type {
+    margin-bottom: 10px;
+}
+
+.settings-section + .settings-section {
+    margin-top: 2px;
+}
+
+@media (max-width: 420px) {
+    .vault-section .search-box,
+    .credentials-section .search-box {
+        gap: 4px;
+    }
+
+    .vault-section .search-box input,
+    .credentials-section .search-box input {
+        flex-basis: 120px;
+    }
+
+    .credentials-section .search-box select {
+        flex-basis: 88px;
+    }
+}
+
+/* Keep popup search controls compact on narrow screens. */
+.vault-section .search-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    flex-direction: row;
+}
+
+.credentials-section .search-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    flex-direction: row;
+}
+
+.credentials-section .search-box input {
+    grid-column: 1 / -1;
+}
+
+.vault-section .search-box input,
+.credentials-section .search-box input,
+.credentials-section .search-box select {
+    width: 100%;
+    min-height: 30px;
+    height: 30px;
+}
+
+.vault-section .search-box button,
+.credentials-section .search-box button {
+    width: auto;
+    min-width: 54px;
+    height: 30px;
+    min-height: 30px;
+    margin: 0;
+    padding: 5px 9px;
+}
+
+.credentials-section .search-box select {
+    grid-column: 1;
+    min-width: 0;
+}
+
+.dashboard button:not(:disabled):hover {
+    border-color: rgba(139, 92, 246, .7);
+    background-color: rgba(139, 92, 246, .18);
+}
+
+.dashboard .primary-button:not(:disabled):hover,
+.dashboard form > button:not(:disabled):hover {
+    border-color: transparent;
+    background-color: var(--accent-hover);
+}
+
+.dashboard .logout-button:not(:disabled):hover {
+    border-color: transparent;
+    background-color: #dc2626;
+}
+
+.dashboard .view-tabs button:not(:disabled):hover,
+.dashboard .view-tabs button.active {
+    background-color: rgba(139, 92, 246, .28);
+    color: #fff;
+}
+
+@media (max-width: 420px) {
+    .vault-section .search-box,
+    .credentials-section .search-box {
+        flex-direction: row;
+    }
+
+    .vault-section .search-box > button,
+    .credentials-section .search-box > button {
+        width: auto;
+        flex: 0 0 auto;
+    }
 }
 
 @media (max-width: 600px) {

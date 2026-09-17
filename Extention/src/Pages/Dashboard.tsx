@@ -696,6 +696,29 @@ function Dashboard() {
         setVaultMessage("This vault has no credentials yet. Add one below.");
     };
 
+    const pageContent: Record<DashboardView, { title: string; subtitle: string }> = {
+        dashboard: {
+            title: "Dashboard",
+            subtitle: "Everything important, protected in one place."
+        },
+        vaults: {
+            title: "Vaults",
+            subtitle: "Organize your credentials with multiple vaults."
+        },
+        credentials: {
+            title: "Credentials",
+            subtitle: "Manage your saved credentials securely."
+        },
+        security: {
+            title: "Security",
+            subtitle: "Monitor and enhance your security."
+        },
+        settings: {
+            title: "Settings",
+            subtitle: "Customize your VaultX experience."
+        }
+    };
+
     return (
         <div className="dashboard">
 
@@ -747,12 +770,11 @@ function Dashboard() {
                     <div>
 
                         <div>
-                            <span className="eyebrow">SECURE SPACE</span>
-                            <h1>{activeView === "dashboard" ? "Dashboard" : activeView[0].toUpperCase() + activeView.slice(1)}</h1>
+                            <h1>{pageContent[activeView].title}</h1>
                         </div>
 
                         <p>
-                            Everything important, protected in one place.
+                            {pageContent[activeView].subtitle}
                         </p>
 
                     </div>
@@ -760,6 +782,7 @@ function Dashboard() {
                 </div>
 
                 {activeView === "dashboard" && (
+                <>
                 <section className="overview">
 
                     <button
@@ -768,6 +791,7 @@ function Dashboard() {
                         onClick={() => setActiveView("vaults")}
                     >
 
+                        <span className="stat-icon vault-icon">▣</span>
                         <span>
                             Total Vaults
                         </span>
@@ -784,6 +808,7 @@ function Dashboard() {
                         onClick={() => setActiveView("credentials")}
                     >
 
+                        <span className="stat-icon credential-icon">▤</span>
                         <span>
                             Total Credentials
                         </span>
@@ -800,6 +825,7 @@ function Dashboard() {
                         onClick={() => setActiveView("security")}
                     >
 
+                        <span className="stat-icon security-icon">◆</span>
                         <span>
                             Security Score
                         </span>
@@ -813,12 +839,48 @@ function Dashboard() {
                     </button>
 
                 </section>
+
+                <section className="overview-actions">
+                    <div className="overview-actions-header">
+                        <h2>Quick Actions</h2>
+                    </div>
+
+                    <button type="button" onClick={() => setModal("vault")}>
+                        <span className="action-icon">+</span>
+                        <span>Create New Vault</span>
+                        <span className="action-arrow">›</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const vault = vaults[0];
+                            if (vault) {
+                                setActiveCredentialVault(vault.id);
+                                setModal("credential");
+                            } else {
+                                setModal("vault");
+                            }
+                        }}
+                    >
+                        <span className="action-icon">+</span>
+                        <span>Add Credential</span>
+                        <span className="action-arrow">›</span>
+                    </button>
+
+                    <button type="button" onClick={() => setActiveView("security")}>
+                        <span className="action-icon">◆</span>
+                        <span>Security Check</span>
+                        <span className="action-arrow">›</span>
+                    </button>
+                </section>
+                </>
                 )}
 
                 <section className={`security-section settings-section ${activeView === "settings" ? "" : "view-hidden"} ${expandedSetting === "college" ? "is-expanded" : ""}`}>
 
                     <button className="setting-heading" type="button" onClick={() => setExpandedSetting(expandedSetting === "college" ? null : "college")}>
-                        College Assistant 🎓
+                        College Assistant
                         <span>{expandedSetting === "college" ? "−" : "+"}</span>
                     </button>
 
