@@ -1840,7 +1840,25 @@ function Dashboard() {
                         <button className="modal-close" type="button" aria-label="Close" onClick={() => setModal(null)}>×</button>
                         {modal === "vault" && <VaultForm onCreated={() => { setModal(null); fetchData(search, credentialVaultFilter, vaultSearch); }} />}
                         {modal === "credential" && activeCredentialVault !== null && (
-                            <CredentialForm vaultId={activeCredentialVault} onCreated={() => { setModal(null); fetchData(search, credentialVaultFilter, vaultSearch); }} />
+                            <>
+                                <div className="credential-vault-picker">
+                                    <label htmlFor="credential-vault-select">
+                                        Add to vault
+                                    </label>
+                                    <select
+                                        id="credential-vault-select"
+                                        value={activeCredentialVault}
+                                        onChange={(event) => setActiveCredentialVault(Number(event.target.value))}
+                                    >
+                                        {vaults.map((vault) => (
+                                            <option key={vault.id} value={vault.id}>
+                                                {vault.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <CredentialForm vaultId={activeCredentialVault} onCreated={() => { setModal(null); fetchData(search, credentialVaultFilter, vaultSearch); }} />
+                            </>
                         )}
                     </div>
                 </div>

@@ -1461,6 +1461,25 @@ body {
     font-size: 10px;
 }
 
+.credential-vault-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 12px;
+}
+
+.credential-vault-picker label {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.credential-vault-picker select {
+    min-height: 31px;
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
 .settings-section {
     margin-bottom: 13px;
 }
