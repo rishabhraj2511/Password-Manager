@@ -701,17 +701,25 @@ function Dashboard() {
 
             <nav className="navbar">
 
-                <div className="brand-lockup">
-                    <span className="brand-mark">V</span>
-                    <div>
-                        <h2>VaultX</h2>
-                        <small>Personal vault</small>
+                <div className="navbar-topline">
+                    <div className="brand-lockup">
+                        <span className="brand-mark">V</span>
+                        <div>
+                            <h2>VaultX</h2>
+                            <small>Personal vault</small>
+                        </div>
                     </div>
+
+                    <button
+                        className="logout-button"
+                        onClick={handleLogout}
+                        disabled={logoutLoading}
+                    >
+                        {logoutLoading ? "..." : "Log out"}
+                    </button>
                 </div>
 
-                <div>
-
-                    <div className="view-tabs" role="tablist" aria-label="Vault navigation">
+                <div className="view-tabs" role="tablist" aria-label="Vault navigation">
                         {([
                             ["dashboard", "Overview"],
                             ["vaults", "Vaults"],
@@ -728,20 +736,6 @@ function Dashboard() {
                                 {label}
                             </button>
                         ))}
-                    </div>
-
-                    <button
-                        className="logout-button"
-                        onClick={
-                            handleLogout
-                        }
-                        disabled={
-                            logoutLoading
-                        }
-                    >
-                        {logoutLoading ? "..." : "Log out"}
-                    </button>
-
                 </div>
 
             </nav>
@@ -830,10 +824,6 @@ function Dashboard() {
 
                     <div className="security-alert">
 
-                        <strong>
-                            College Gmail
-                        </strong>
-
                         <p>
                             Connect your college Google
                             account so VaultX can securely
@@ -899,12 +889,11 @@ function Dashboard() {
 
                 </section>
 
-                <section className={`security-section settings-section ${activeView === "settings" ? "" : "view-hidden"} ${expandedSetting === "autofill" ? "is-expanded" : ""}`}>
+                <section className={`security-section autofill-section ${activeView === "settings" ? "" : "view-hidden"}`}>
 
-                    <button className="setting-heading" type="button" onClick={() => setExpandedSetting(expandedSetting === "autofill" ? null : "autofill")}>
+                    <h2 className="setting-heading">
                         Autofill Preferences
-                        <span>{expandedSetting === "autofill" ? "−" : "+"}</span>
-                    </button>
+                    </h2>
 
                     <div
                         className="security-alert"
@@ -989,10 +978,7 @@ function Dashboard() {
                         )}
 
                         {pinMode && (
-                            <div
-                                className="password-change-box"
-                                style={{ marginTop: "15px" }}
-                            >
+                            <div className="pin-form">
                                 <h3>
                                     {pinMode === "set"
                                         ? "Set Password View PIN"
@@ -1000,55 +986,60 @@ function Dashboard() {
                                 </h3>
 
                                 {pinMode === "change" && (
+                                    <label>
+                                        Current 6-digit PIN
+                                        <input
+                                            type="password"
+                                            inputMode="numeric"
+                                            maxLength={6}
+                                            placeholder="Enter current PIN"
+                                            value={currentPin}
+                                            onChange={(e) =>
+                                                setCurrentPin(
+                                                    e.target.value
+                                                        .replace(/\D/g, "")
+                                                        .slice(0, 6)
+                                                )
+                                            }
+                                        />
+                                    </label>
+                                )}
+
+                                <label>
+                                    {pinMode === "set" ? "Create 6-digit PIN" : "New 6-digit PIN"}
                                     <input
                                         type="password"
                                         inputMode="numeric"
                                         maxLength={6}
-                                        placeholder="Current 6-digit PIN"
-                                        value={currentPin}
+                                        placeholder="Enter new PIN"
+                                        value={newPin}
                                         onChange={(e) =>
-                                            setCurrentPin(
+                                            setNewPin(
                                                 e.target.value
                                                     .replace(/\D/g, "")
                                                     .slice(0, 6)
                                             )
                                         }
                                     />
-                                )}
+                                </label>
 
-                                <input
-                                    type="password"
-                                    inputMode="numeric"
-                                    maxLength={6}
-                                    placeholder={
-                                        pinMode === "set"
-                                            ? "Create 6-digit PIN"
-                                            : "New 6-digit PIN"
-                                    }
-                                    value={newPin}
-                                    onChange={(e) =>
-                                        setNewPin(
-                                            e.target.value
-                                                .replace(/\D/g, "")
-                                                .slice(0, 6)
-                                        )
-                                    }
-                                />
-
-                                <input
-                                    type="password"
-                                    inputMode="numeric"
-                                    maxLength={6}
-                                    placeholder="Confirm 6-digit PIN"
-                                    value={confirmPin}
-                                    onChange={(e) =>
-                                        setConfirmPin(
-                                            e.target.value
-                                                .replace(/\D/g, "")
-                                                .slice(0, 6)
-                                        )
-                                    }
-                                />
+                                <label>
+                                    Confirm 6-digit PIN
+                                    <input
+                                        type="password"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        placeholder="Re-enter new PIN"
+                                        value={confirmPin}
+                                        onChange={(e) =>
+                                            setConfirmPin(
+                                                e.target.value
+                                                    .replace(/\D/g, "")
+                                                    .slice(0, 6)
+                                            )
+                                        }
+                                    />
+                                </label>
 
                                 <div
                                     style={{
@@ -1057,7 +1048,7 @@ function Dashboard() {
                                         marginTop: "10px"
                                     }}
                                 >
-                                    <button
+                                    <button className="primary-button"
                                         type="button"
                                         onClick={handlePinSubmit}
                                         disabled={pinLoading}
@@ -1065,11 +1056,11 @@ function Dashboard() {
                                         {pinLoading
                                             ? "Saving..."
                                             : pinMode === "set"
-                                                ? "Set PIN"
-                                                : "Change PIN"}
+                                                ? "Update PIN"
+                                                : "Update PIN"}
                                     </button>
 
-                                    <button
+                                    <button className="secondary-button"
                                         type="button"
                                         onClick={resetPinForm}
                                         disabled={pinLoading}
@@ -1102,17 +1093,7 @@ function Dashboard() {
                         <span>{expandedSetting === "account" ? "−" : "+"}</span>
                     </button>
 
-                    <div className="security-alert">
-
-                        <strong>
-                            Change Password
-                        </strong>
-
-                        <p>
-                            Update your VaultX account
-                            password to keep your
-                            account secure.
-                        </p>
+                    <div className="account-settings-content">
 
                         <ChangePassword />
 

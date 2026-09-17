@@ -209,6 +209,7 @@ a:hover {
     .security-section > h2 { margin-bottom: 9px; }
     .view-hidden { display: none; }
     .settings-section:not(.is-expanded) .security-alert { display: none; }
+    .settings-section:not(.is-expanded) .account-settings-content { display: none; }
     .setting-heading { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; font-size: 14px; font-weight: 700; }
     .setting-heading span { color: var(--muted); font-size: 17px; }
     .section-actions { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
@@ -913,6 +914,245 @@ form > button:hover,
 
     .generate-btn {
         width: 100%;
+    }
+}
+
+/* Compact extension settings layout */
+.navbar {
+    height: auto;
+    min-height: 0;
+    padding: 12px 14px 9px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.navbar-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+}
+
+.navbar > .navbar-topline {
+    flex-direction: row;
+    align-items: center;
+}
+
+.brand-lockup {
+    min-width: 0;
+}
+
+.brand-lockup h2 {
+    font-size: 15px;
+}
+
+.brand-mark {
+    flex: 0 0 auto;
+}
+
+.logout-button {
+    flex: 0 0 auto;
+    border: 0;
+    background: var(--danger);
+    color: #fff;
+    font-weight: 700;
+}
+
+.logout-button:hover {
+    background: #dc2626;
+}
+
+.view-tabs {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 4px;
+}
+
+.navbar > .view-tabs {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.dashboard-content {
+    width: 100%;
+    padding: 16px 10px 28px;
+}
+
+.dashboard-header {
+    margin-bottom: 12px;
+}
+
+.dashboard-header h1 {
+    font-size: 26px;
+}
+
+.security-section,
+.vault-section,
+.credentials-section {
+    padding: 11px;
+    margin-bottom: 9px;
+}
+
+.settings-section .security-alert {
+    padding: 10px;
+}
+
+.autofill-section .setting-heading {
+    cursor: default;
+}
+
+.autofill-section .security-alert {
+    margin-top: 9px;
+}
+
+.pin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 11px;
+    border-top: 1px solid var(--border);
+}
+
+.pin-form h3,
+.account-password-section h3,
+.two-factor-section h3 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.pin-form label,
+.account-password-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.pin-form input,
+.account-password-form input {
+    min-height: 32px;
+}
+
+.pin-form > div {
+    display: flex !important;
+    gap: 6px !important;
+    margin-top: 2px !important;
+}
+
+.pin-form button,
+.account-password-form button,
+.two-factor-status button,
+.two-factor-setup button {
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.account-security-content {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.account-settings-content {
+    min-width: 0;
+}
+
+.account-password-section p,
+.two-factor-section > p,
+.two-factor-status p {
+    margin: 4px 0 9px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.account-password-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.account-password-form .password-strength {
+    margin-top: -2px;
+}
+
+.two-factor-section {
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.two-factor-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.two-factor-status strong {
+    font-size: 11px;
+}
+
+.two-factor-status p {
+    margin-bottom: 0;
+}
+
+.two-factor-setup {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.two-factor-setup h3 {
+    margin-bottom: 5px;
+}
+
+.qr-code {
+    display: flex;
+    width: fit-content;
+    margin: 12px auto;
+    padding: 12px;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.qr-code svg {
+    width: min(180px, 100%);
+    height: auto;
+}
+
+.otp-input {
+    text-align: center;
+    letter-spacing: 4px;
+}
+
+@media (max-width: 380px) {
+    .navbar {
+        padding-inline: 10px;
+    }
+
+    .view-tabs button {
+        padding-inline: 6px;
+    }
+
+    .two-factor-status {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .two-factor-status button {
+        align-self: flex-start;
     }
 }
 .search-box select {

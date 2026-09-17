@@ -271,31 +271,37 @@ function ChangePassword() {
     };
 
     return (
-        <section className="security-section">
+        <div className="account-security-content">
 
-            <h2>
-                Change VaultX Account Password
-            </h2>
+            <div className="account-password-section">
+                <h3>Change Account Password</h3>
+                <p>Update your VaultX account password to keep your account secure.</p>
 
-            <div className="password-change-box">
+                <div className="account-password-form">
 
-                <input
-                    type="password"
-                    placeholder="Current Password"
-                    value={currentPassword}
-                    onChange={(e) =>
-                        setCurrentPassword(e.target.value)
-                    }
-                />
+                    <label>
+                        Current Password
+                        <input
+                            type="password"
+                            placeholder="Enter current password"
+                            value={currentPassword}
+                            onChange={(e) =>
+                                setCurrentPassword(e.target.value)
+                            }
+                        />
+                    </label>
 
-                <input
-                    type="password"
-                    placeholder="New Password"
-                    value={newPassword}
-                    onChange={(e) =>
-                        setNewPassword(e.target.value)
-                    }
-                />
+                    <label>
+                        New Password
+                        <input
+                            type="password"
+                            placeholder="Enter new password"
+                            value={newPassword}
+                            onChange={(e) =>
+                                setNewPassword(e.target.value)
+                            }
+                        />
+                    </label>
 
                 {newPassword && (
                     <div className="password-strength">
@@ -333,14 +339,17 @@ function ChangePassword() {
                     </div>
                 )}
 
-                <input
-                    type="password"
-                    placeholder="Confirm New Password"
-                    value={confirmPassword}
-                    onChange={(e) =>
-                        setConfirmPassword(e.target.value)
-                    }
-                />
+                    <label>
+                        Confirm New Password
+                        <input
+                            type="password"
+                            placeholder="Re-enter new password"
+                            value={confirmPassword}
+                            onChange={(e) =>
+                                setConfirmPassword(e.target.value)
+                            }
+                        />
+                    </label>
 
                 {confirmPassword &&
                     newPassword !== confirmPassword && (
@@ -349,14 +358,13 @@ function ChangePassword() {
                         </p>
                     )}
 
-                <button
-                    onClick={changePassword}
-                    disabled={loading}
-                >
-                    {loading
-                        ? "Changing Password..."
-                        : "Change Account Password"}
-                </button>
+                    <button
+                        className="primary-button"
+                        onClick={changePassword}
+                        disabled={loading}
+                    >
+                        {loading ? "Changing Password..." : "Update Password"}
+                    </button>
 
                 {message && (
                     <p
@@ -370,36 +378,16 @@ function ChangePassword() {
                     </p>
                 )}
 
+                </div>
             </div>
 
-            <div
-                className="password-change-box"
-                style={{
-                    marginTop: "20px"
-                }}
-            >
+            <section className="two-factor-section">
 
-                <h2>
-                    Two-Factor Authentication
-                </h2>
+                <h3>Two-Factor Authentication</h3>
 
-                <p
-                    style={{
-                        marginBottom: "15px"
-                    }}
-                >
-                    Add an extra layer of security to your
-                    VaultX account.
-                </p>
+                <p>Add an extra layer of security to your VaultX account.</p>
 
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "15px"
-                    }}
-                >
+                <div className="two-factor-status">
 
                     <div>
                         <strong>
@@ -409,11 +397,7 @@ function ChangePassword() {
                                 : "Disabled"}
                         </strong>
 
-                        <p
-                            style={{
-                                marginTop: "5px"
-                            }}
-                        >
+                        <p>
                             {twoFactorEnabled
                                 ? "Two-factor authentication is currently active."
                                 : "Two-factor authentication is currently inactive."}
@@ -445,15 +429,7 @@ function ChangePassword() {
                 </div>
 
                 {twoFactorSetup && !twoFactorEnabled && (
-                    <div
-                        style={{
-                            marginTop: "20px",
-                            padding: "20px",
-                            border: "1px solid #303747",
-                            borderRadius: "10px",
-                            textAlign: "center"
-                        }}
-                    >
+                    <div className="two-factor-setup">
 
                         <h3>
                             Set Up Authenticator
@@ -464,20 +440,7 @@ function ChangePassword() {
                             authenticator app.
                         </p>
 
-                        <div
-                            style={{
-                                display: "flex",
-                                justifyContent: "center",
-                                alignItems: "center",
-                                margin: "20px 0",
-                                padding: "20px",
-                                background: "#ffffff",
-                                borderRadius: "12px",
-                                width: "fit-content",
-                                marginLeft: "auto",
-                                marginRight: "auto"
-                            }}
-                        >
+                        <div className="qr-code">
                             <QRCodeSVG
                                 value={provisioningUri}
                                 size={220}
@@ -492,6 +455,7 @@ function ChangePassword() {
                         </p>
 
                         <input
+                            className="otp-input"
                             type="text"
                             inputMode="numeric"
                             maxLength={6}
@@ -503,20 +467,12 @@ function ChangePassword() {
                                         .replace(/\D/g, "")
                                 )
                             }
-                            style={{
-                                marginTop: "10px",
-                                textAlign: "center",
-                                letterSpacing: "5px",
-                                fontSize: "18px"
-                            }}
                         />
 
                         <button
+                            className="primary-button"
                             onClick={verifyTwoFactor}
                             disabled={twoFactorLoading}
-                            style={{
-                                marginTop: "10px"
-                            }}
                         >
                             {twoFactorLoading
                                 ? "Verifying..."
@@ -524,6 +480,7 @@ function ChangePassword() {
                         </button>
 
                         <button
+                            className="secondary-button"
                             type="button"
                             onClick={() => {
                                 setTwoFactorSetup(false);
@@ -531,9 +488,6 @@ function ChangePassword() {
                                 setProvisioningUri("");
                                 setOtp("");
                                 setTwoFactorMessage("");
-                            }}
-                            style={{
-                                marginTop: "10px"
                             }}
                         >
                             Cancel
@@ -591,9 +545,9 @@ function ChangePassword() {
                     </p>
                 )}
 
-            </div>
+            </section>
 
-        </section>
+        </div>
     );
 }
 
