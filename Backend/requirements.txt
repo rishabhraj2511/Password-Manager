@@ -1,0 +1,8 @@
+cryptography==50.0.0
+fastapi
+passlib==1.7.4
+psycopg2-binary
+python-dotenv==1.2.3
+python-jose==3.5.0
+sqlalchemy
+uvicorn
