@@ -3,6 +3,7 @@ cryptography
 email-validator
 fastapi
 passlib[bcrypt]
+pyotp
 psycopg2-binary
 python-dotenv
 python-jose[cryptography]
