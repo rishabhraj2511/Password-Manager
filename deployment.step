@@ -1,0 +1,414 @@
+VAULTX DEPLOYMENT GUIDE
+=======================
+
+This guide deploys the VaultX FastAPI backend in Docker on one AWS Linux server.
+The React/Vite project is a Chrome extension. It is built separately and loaded
+into Chrome; it is not served as the backend website.
+
+Recommended production shape:
+
+  Chrome extension -> HTTPS reverse proxy -> FastAPI Docker container
+                                      -> PostgreSQL (managed or Docker)
+
+The commands below assume Windows PowerShell for local commands and Ubuntu for
+AWS commands. Replace every value in angle brackets. Never commit real secrets.
+
+
+0. SECURITY ACTION REQUIRED BEFORE PUSHING TO GITHUB
+-----------------------------------------------------
+
+Backend/.env currently contains values that look like real credentials, including
+database, SMTP, encryption, and Google OAuth secrets. Treat them as compromised:
+
+1. Rotate the PostgreSQL password.
+2. Revoke and recreate the SMTP/Gmail app password.
+3. Create a new Fernet ENCRYPTION_KEY only if the existing encrypted credentials
+   can be re-encrypted or are disposable. Existing encrypted data cannot be
+   decrypted with a different key.
+4. Rotate the Google OAuth secret if Google OAuth is used.
+5. Generate a new VAULTX_SECRET_KEY.
+6. Remove Backend/.env from Git history if it was ever committed. Removing it
+   from the latest commit alone does not remove it from Git history.
+7. Keep Backend/.env ignored. Do not paste secret values into this document,
+   GitHub, Dockerfiles, or docker-compose.yml committed to the repository.
+
+Generate a new JWT secret locally with:
+
+  python -c "import secrets; print(secrets.token_urlsafe(64))"
+
+Generate a new Fernet key with:
+
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+If the exposed values are production values, rotate them before continuing.
+
+
+1. VERIFY THE PROJECT LOCALLY
+-----------------------------
+
+From the repository root:
+
+  cd Backend
+  .\venv\Scripts\Activate.ps1
+  python -m pip install --upgrade pip
+
+The backend does not currently contain a requirements.txt. Create
+Backend/requirements.txt with the runtime packages used by the source code:
+
+  alembic
+  cryptography
+  email-validator
+  fastapi
+  passlib[bcrypt]
+  psycopg2-binary
+  python-dotenv
+  python-jose[cryptography]
+  python-multipart
+  sqlalchemy
+  uvicorn[standard]
+
+Install and run the backend locally:
+
+  python -m pip install -r requirements.txt
+  alembic upgrade head
+  python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+In another terminal verify:
+
+  Invoke-RestMethod http://127.0.0.1:8000/
+  Invoke-RestMethod http://127.0.0.1:8000/docs
+
+Before deploying, run the extension checks:
+
+  cd ..\Extention
+  npm ci
+  npm run lint
+  npm run build
+
+The extension build must finish with a dist directory.
+
+
+2. REQUIRED PRODUCTION ENVIRONMENT VARIABLES
+---------------------------------------------
+
+Create a private file on the AWS server at /opt/vaultx/.env. Use one DATABASE_URL
+or all five DB_* variables. DATABASE_URL is preferred for a hosted PostgreSQL
+provider such as Neon, Supabase, or RDS.
+
+Required values:
+
+  DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<database>?sslmode=require
+  ENCRYPTION_KEY=<stable-Fernet-key>
+  VAULTX_SECRET_KEY=<long-random-jwt-secret>
+  SMTP_HOST=smtp.gmail.com
+  SMTP_PORT=465
+  SMTP_EMAIL=<sender-email>
+  SMTP_PASSWORD=<smtp-app-password>
+
+Optional Google OAuth values, only if the application uses them:
+
+  GOOGLE_CLIENT_ID=<client-id>
+  GOOGLE_CLIENT_SECRET=<client-secret>
+
+If using a local PostgreSQL container instead of hosted PostgreSQL, use:
+
+  DB_USER=vaultx
+  DB_PASSWORD=<strong-password>
+  DB_HOST=db
+  DB_PORT=5432
+  DB_NAME=vaultx
+
+Do not change ENCRYPTION_KEY after encrypted credentials have been stored. Back it
+up in a password manager or AWS Secrets Manager. Use chmod 600 on the server file.
+
+The current backend CORS policy accepts Chrome extension origins matching
+chrome-extension://.*. The extension still needs the deployed API URL below.
+
+
+3. ADD THE DOCKER FILES
+-----------------------
+
+Create Backend/requirements.txt using the package list in step 1.
+
+Create Backend/Dockerfile:
+
+  FROM python:3.12-slim
+  WORKDIR /app
+  ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+  COPY requirements.txt .
+  RUN pip install --no-cache-dir -r requirements.txt
+  COPY app ./app
+  COPY migrations ./migrations
+  COPY alembic.ini .
+  EXPOSE 8000
+  CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+For a single-server deployment, create docker-compose.yml in the repository root:
+
+  services:
+    api:
+      build:
+        context: ./Backend
+      container_name: vaultx-api
+      restart: unless-stopped
+      env_file:
+        - ./Backend/.env
+      ports:
+        - "8000:8000"
+      healthcheck:
+        test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"]
+        interval: 30s
+        timeout: 5s
+        retries: 3
+
+This Compose file assumes hosted PostgreSQL. Do not expose port 5432 publicly.
+For local PostgreSQL, add a db service and change DB_HOST to db:
+
+    db:
+      image: postgres:16-alpine
+      container_name: vaultx-db
+      restart: unless-stopped
+      environment:
+        POSTGRES_USER: vaultx
+        POSTGRES_PASSWORD: <strong-password>
+        POSTGRES_DB: vaultx
+      volumes:
+        - postgres_data:/var/lib/postgresql/data
+
+  volumes:
+    postgres_data:
+
+If using the local db service, put the api service and db service under the same
+services block and put volumes at the top level. Managed PostgreSQL is preferable
+because a single server is not a database backup strategy.
+
+
+4. FIX THE EXTENSION API URL BEFORE BUILDING
+--------------------------------------------
+
+Extention/src/Services/api.ts now reads VITE_API_URL at build time and falls back
+to http://127.0.0.1:8000 for local development. Set the production value before
+building the extension:
+
+PowerShell:
+
+  $env:VITE_API_URL = "https://api.<your-domain>"
+  npm run build
+
+Linux/macOS:
+
+  VITE_API_URL=https://api.<your-domain> npm run build
+
+Do not use an HTTP API URL for a production extension. If a domain is not ready,
+use the server's public IP temporarily, but Chrome and secure authentication are
+better served by HTTPS with a domain name.
+
+Then rebuild:
+
+  cd Extention
+  npm ci
+  npm run lint
+  npm run build
+
+The extension package is Extention/dist. In Chrome, open chrome://extensions,
+enable Developer mode, choose Load unpacked, and select Extention/dist.
+
+
+5. TEST DOCKER LOCALLY
+----------------------
+
+From the repository root, create a local Backend/.env with safe test values and
+then run:
+
+  docker compose build
+  docker compose up -d
+  docker compose ps
+  Invoke-RestMethod http://127.0.0.1:8000/
+  docker compose logs api
+
+Stop it with:
+
+  docker compose down
+
+Do not use `docker compose down -v` unless you intentionally want to delete the
+local PostgreSQL volume and all data.
+
+
+6. PUSH THE SAFE PROJECT TO GITHUB
+----------------------------------
+
+Confirm .gitignore includes at least:
+
+  Backend/.env
+  Backend/venv/
+  Backend/__pycache__/
+  Extention/node_modules/
+  Extention/dist/
+
+Check for secrets before pushing:
+
+  git status
+  git grep -n "SMTP_PASSWORD\|DB_PASSWORD\|GOOGLE_CLIENT_SECRET\|ENCRYPTION_KEY"
+
+If Backend/.env is already tracked, remove it from the index only after rotating
+its values, then clean its history using git-filter-repo or GitHub's documented
+secret-removal procedure. Do not force-push a rewritten shared branch without
+coordination.
+
+Commit the deployment files and push:
+
+  git add Backend/requirements.txt Backend/Dockerfile docker-compose.yml deployment.step
+  git commit -m "Add Docker deployment guide"
+  git branch -M main
+  git remote add origin https://github.com/<account>/<repository>.git
+  git push -u origin main
+
+If the remote already exists, omit `git remote add origin`.
+
+Optional GitHub Actions validation can run `npm ci`, `npm run lint`, `npm run
+build`, and `docker compose build` on every push. Do not put production secrets in
+that workflow unless using GitHub Actions Secrets or an AWS OIDC deployment.
+
+
+7. AWS EC2 FREE-TIER DEPLOYMENT
+--------------------------------
+
+Check the current AWS Free Tier page for your account, region, and instance type.
+Free-tier eligibility changes by account age, region, and AWS product rules.
+Lightsail and EC2 are not automatically free for every account.
+
+A. Create the server
+
+1. Open EC2 in the AWS Console and launch an Ubuntu LTS instance eligible for
+   your account's free tier.
+2. Create/download an SSH key pair.
+3. Configure the security group:
+   - SSH TCP 22: My IP only
+   - HTTP TCP 80: 0.0.0.0/0
+   - HTTPS TCP 443: 0.0.0.0/0
+   - Do not expose TCP 8000 or 5432 publicly.
+4. Allocate an Elastic IP only if you understand its billing rules when detached.
+5. Point `api.<your-domain>` DNS to the instance public IP.
+
+B. Install Docker and Git over SSH
+
+  ssh -i <key-file>.pem ubuntu@<server-ip>
+  sudo apt-get update
+  sudo apt-get install -y ca-certificates curl git
+  curl -fsSL https://get.docker.com | sudo sh
+  sudo usermod -aG docker $USER
+  exit
+
+Reconnect so the Docker group takes effect, then clone the repository:
+
+  ssh -i <key-file>.pem ubuntu@<server-ip>
+  git clone https://github.com/<account>/<repository>.git /opt/vaultx
+  cd /opt/vaultx
+  sudo mkdir -p /opt/vaultx
+  sudo nano /opt/vaultx/Backend/.env
+  sudo chmod 600 /opt/vaultx/Backend/.env
+
+Paste the production environment values from step 2, then start the API:
+
+  docker compose up -d --build
+  docker compose ps
+  docker compose logs -f api
+
+C. Add HTTPS with Caddy
+
+Create a Caddyfile on the server:
+
+  sudo apt-get install -y caddy
+  sudo nano /etc/caddy/Caddyfile
+
+Use:
+
+  api.<your-domain> {
+      reverse_proxy 127.0.0.1:8000
+  }
+
+Then apply it:
+
+  sudo systemctl enable --now caddy
+  sudo systemctl reload caddy
+
+Caddy obtains and renews Let's Encrypt certificates automatically when DNS and
+ports 80/443 are correct. Test:
+
+  curl https://api.<your-domain>/
+  curl https://api.<your-domain>/docs
+
+Rebuild the extension after setting its API URL to this HTTPS address.
+
+D. Updating the EC2 deployment
+
+  cd /opt/vaultx
+  git pull --ff-only origin main
+  docker compose up -d --build
+  docker compose ps
+  docker image prune -f
+
+The container startup runs `alembic upgrade head` before Uvicorn starts. Back up
+the database before schema changes, and inspect logs if a migration fails.
+
+
+8. AWS LIGHTSAIL ALTERNATIVE
+-----------------------------
+
+Use this instead of EC2 if Lightsail pricing and free-trial eligibility are better
+for your account. Do not run both servers for the same API unless you deliberately
+configure a load balancer and shared database.
+
+1. Create a Lightsail Linux/Unix Ubuntu instance.
+2. Confirm the selected plan is eligible for your account; free trials and free
+   periods are account-specific and can expire.
+3. Attach a static IP and open only SSH 22, HTTP 80, and HTTPS 443.
+4. Connect using the Lightsail browser SSH or your downloaded key.
+5. Run the same Docker installation, clone, .env creation, Caddy setup, and
+   `docker compose up -d --build` commands from the EC2 section.
+6. Point `api.<your-domain>` to the Lightsail static IP.
+7. Verify `https://api.<your-domain>/` and install the rebuilt extension.
+
+The application commands are identical after SSH. The AWS console, firewall UI,
+static IP rules, and billing/free-tier terms are the main differences.
+
+
+9. BACKUPS, OPERATIONS, AND ROLLBACK
+-------------------------------------
+
+For hosted PostgreSQL, enable provider backups and test a restore. For local
+PostgreSQL, schedule `pg_dump` to storage outside the instance; the Docker volume
+alone is not a backup.
+
+Useful checks:
+
+  docker compose ps
+  docker compose logs --tail=200 api
+  docker inspect --format='{{json .State.Health}}' vaultx-api
+  curl http://127.0.0.1:8000/
+
+Rollback the application code:
+
+  git log --oneline -5
+  git checkout <known-good-commit>
+  docker compose up -d --build
+
+Do not roll back blindly after a destructive database migration. Restore the
+application and database together according to your backup plan.
+
+
+10. DEPLOYMENT ACCEPTANCE CHECKLIST
+-----------------------------------
+
+[ ] No real secrets are committed to GitHub.
+[ ] Database, SMTP, JWT, and Fernet values exist only in the server environment.
+[ ] `VAULTX_SECRET_KEY` is set and is not `CHANGE_THIS_LATER`.
+[ ] `ENCRYPTION_KEY` is stable and backed up securely.
+[ ] `docker compose ps` shows the API running and healthy.
+[ ] `alembic upgrade head` completes successfully.
+[ ] GET `/` returns the VaultX running message.
+[ ] HTTPS works for the API domain.
+[ ] The extension Axios URL uses the HTTPS API domain, not 127.0.0.1.
+[ ] Registration, login, credential encryption, and password reset email work.
+[ ] Database backups and restore instructions are tested.
+[ ] AWS security group/firewall does not expose ports 8000 or 5432.
