@@ -3,6 +3,7 @@ cryptography
 email-validator
 fastapi
 passlib[bcrypt]
+bcrypt==4.0.1
 pyotp
 psycopg2-binary
 python-dotenv
