@@ -16,6 +16,7 @@
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:5173/*",
+    "https://vaultx-backend-0vwz.onrender.com/*",
     "https://mail.google.com/*",
     "https://gmail.googleapis.com/*"
   ],

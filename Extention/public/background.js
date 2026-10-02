@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "https://vaultx-backend-0vwz.onrender.com";
 
 const GOOGLE_CLIENT_ID =
     "39063674742-fchrcdvkro4de4iqburbe3viuracq9qb.apps.googleusercontent.com";

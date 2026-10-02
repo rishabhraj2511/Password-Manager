@@ -2,7 +2,7 @@ import axios from "axios";
 
 const apiBaseUrl =
     import.meta.env.VITE_API_URL ||
-    "http://127.0.0.1:8000";
+    "https://vaultx-backend-0vwz.onrender.com";
 
 const api = axios.create({
     baseURL: apiBaseUrl,
@@ -65,7 +65,7 @@ api.interceptors.response.use(
 
         if (!error.response) {
             message =
-                "Unable to connect to VaultX. Please check that the backend is running.";
+                "Unable to connect to VaultX. Please check your internet connection or try again later.";
         } else if (status === 400) {
             message =
                 error.response.data?.detail ||
