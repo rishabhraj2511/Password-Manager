@@ -224,7 +224,7 @@ VaultX/
 
 # Development Setup
 
-If you want to run or modify VaultX locally, follow these steps.
+If you want to run VaultX locally, follow these steps.
 
 # Prerequisites
 
